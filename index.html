@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>充电器买家秀文案生成器</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>充电器买家秀文案素材库</h1>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">文案生成器</h2>
+          <button class="btn primary" id="generateBtn" type="button">生成文案</button>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div class="field">
+              <span class="field-title">卖点</span>
+              <div class="check-grid" id="sellingPointOptions"></div>
+              <div class="custom-row" id="customSellingPointRow">
+                <input id="customSellingPointInput" type="text" placeholder="输入自定义卖点">
+                <button class="btn ghost" id="addSellingPointBtn" type="button">添加</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-title">使用场景</span>
+              <div class="check-grid" id="sceneOptions"></div>
+              <div class="custom-row" id="customSceneRow">
+                <input id="customSceneInput" type="text" placeholder="输入自定义使用场景">
+                <button class="btn ghost" id="addSceneBtn" type="button">添加</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="creativityLevel">创意强度</label>
+              <select id="creativityLevel">
+                <option value="stable">稳定</option>
+                <option value="standard" selected>标准</option>
+                <option value="wild">发散</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <span class="field-title">参考方式</span>
+              <label class="toggle-row">
+                <input id="useMaterials" type="checkbox" checked>
+                <span>参考素材库生成</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="result-list" id="resultList">
+            <div class="empty">选择卖点和场景后，点击“生成文案”。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">素材库</h2>
+          <div class="actions">
+            <button class="btn primary" id="openMaterialModalBtn" type="button">添加素材</button>
+            <button class="btn danger" id="clearMaterialsBtn" type="button">清空素材库</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="material-list" id="materialList"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="materialModal" role="dialog" aria-modal="true" aria-labelledby="materialModalTitle">
+    <section class="modal">
+      <div class="modal-head">
+        <h2 id="materialModalTitle">添加买家秀文案素材</h2>
+        <button class="btn small ghost" id="closeMaterialModalBtn" type="button">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="materialInput">请输入值得参考的买家秀文案</label>
+          <textarea id="materialInput"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="cancelMaterialBtn" type="button">取消</button>
+        <button class="btn primary" id="saveMaterialBtn" type="button">保存到素材库</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
