@@ -62,6 +62,28 @@ dist
 
 部署完成后，访问 Vercel 提供的网址即可使用。网站没有登录系统，也不会把数据上传到服务器；每个访问者的数据只保存在自己的浏览器里。
 
+## 部署到 GitHub Pages
+
+本仓库已包含 GitHub Actions 工作流：`.github/workflows/deploy.yml`。
+
+推送到 `main` 分支后，GitHub 会自动执行构建并发布到 GitHub Pages。首次使用时，在 GitHub 仓库页面打开：
+
+```text
+Settings -> Pages
+```
+
+将 Source 选择为：
+
+```text
+GitHub Actions
+```
+
+项目发布地址通常是：
+
+```text
+https://nightwind57.github.io/New-project/
+```
+
 ## localStorage Key
 
 当前工具继续使用这些 key，避免破坏已有浏览器数据：
