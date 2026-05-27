@@ -3,100 +3,154 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>充电器买家秀文案生成器</title>
+  <title>链接数据运营看板</title>
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <h1>充电器买家秀文案素材库</h1>
+  <main class="app">
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Daily Link Metrics</p>
+        <h1>链接数据运营看板</h1>
+      </div>
+      <button class="secondary-btn" id="toggleEntryBtn" type="button">录入/修改今日数据</button>
     </header>
 
-    <main class="layout">
-      <section class="panel">
-        <div class="panel-head">
-          <h2 class="panel-title">文案生成器</h2>
-          <button class="btn primary" id="generateBtn" type="button">生成文案</button>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-            <div class="field">
-              <span class="field-title">卖点</span>
-              <div class="check-grid" id="sellingPointOptions"></div>
-              <div class="custom-row" id="customSellingPointRow">
-                <input id="customSellingPointInput" type="text" placeholder="输入自定义卖点">
-                <button class="btn ghost" id="addSellingPointBtn" type="button">添加</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <span class="field-title">使用场景</span>
-              <div class="check-grid" id="sceneOptions"></div>
-              <div class="custom-row" id="customSceneRow">
-                <input id="customSceneInput" type="text" placeholder="输入自定义使用场景">
-                <button class="btn ghost" id="addSceneBtn" type="button">添加</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="creativityLevel">创意强度</label>
-              <select id="creativityLevel">
-                <option value="stable">稳定</option>
-                <option value="standard" selected>标准</option>
-                <option value="wild">发散</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <span class="field-title">参考方式</span>
-              <label class="toggle-row">
-                <input id="useMaterials" type="checkbox" checked>
-                <span>参考素材库生成</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="result-list" id="resultList">
-            <div class="empty">选择卖点和场景后，点击“生成文案”。</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2 class="panel-title">素材库</h2>
-          <div class="actions">
-            <button class="btn primary" id="openMaterialModalBtn" type="button">添加素材</button>
-            <button class="btn danger" id="clearMaterialsBtn" type="button">清空素材库</button>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div class="material-list" id="materialList"></div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div class="modal-backdrop" id="materialModal" role="dialog" aria-modal="true" aria-labelledby="materialModalTitle">
-    <section class="modal">
-      <div class="modal-head">
-        <h2 id="materialModalTitle">添加买家秀文案素材</h2>
-        <button class="btn small ghost" id="closeMaterialModalBtn" type="button">关闭</button>
+    <section class="section link-section" aria-labelledby="linkTitle">
+      <div class="section-title">
+        <h2 id="linkTitle">链接管理</h2>
+        <p>添加自己负责的链接，数据按链接独立保存在本机浏览器。</p>
       </div>
-      <div class="modal-body">
-        <div class="field">
-          <label for="materialInput">请输入值得参考的买家秀文案</label>
-          <textarea id="materialInput"></textarea>
-        </div>
+      <form class="add-link-form" id="addLinkForm">
+        <label>
+          <span>链接名称</span>
+          <input id="newLinkNameInput" type="text" maxlength="40" placeholder="例如：图拉斯Lite充电器（58）">
+        </label>
+        <label>
+          <span>链接 ID</span>
+          <input id="newLinkIdInput" type="text" maxlength="40" placeholder="千牛/商品链接 ID">
+        </label>
+        <button class="primary-btn" type="submit">添加链接</button>
+      </form>
+      <div class="empty-state" id="linkEmptyState" hidden>
+        <strong>请先添加一个目标链接</strong>
+        <p>添加后即可录入数据、切换研究日期并查看运营结论。</p>
       </div>
-      <div class="modal-foot">
-        <button class="btn ghost" id="cancelMaterialBtn" type="button">取消</button>
-        <button class="btn primary" id="saveMaterialBtn" type="button">保存到素材库</button>
+      <div class="link-tabs" id="linkTabs" role="tablist"></div>
+      <div class="link-controls" id="linkControls">
+        <div class="active-link-editor">
+          <label>
+            <span>当前链接名称</span>
+            <input id="editLinkNameInput" type="text" maxlength="40">
+          </label>
+          <label>
+            <span>当前链接 ID</span>
+            <input id="editLinkIdInput" type="text" maxlength="40">
+          </label>
+          <button class="secondary-btn" id="saveLinkBtn" type="button">保存链接</button>
+          <button class="danger-btn" id="deleteLinkBtn" type="button">删除链接</button>
+        </div>
+        <label class="study-date">
+          <span>研究日期</span>
+          <input id="studyDateInput" type="date">
+        </label>
       </div>
     </section>
-  </div>
 
-  <div class="toast" id="toast"></div>
+    <section class="entry-panel" id="entryPanel" hidden>
+      <div class="section-title compact">
+        <h2>录入/修改今日数据</h2>
+        <p>只保存到当前选中的链接。</p>
+      </div>
+      <form class="entry-form" id="entryForm">
+        <label>
+          <span>日期</span>
+          <input id="dateInput" type="date" required>
+        </label>
+        <label>
+          <span>交易金额</span>
+          <input id="transactionAmountInput" type="number" min="0" step="0.01" required>
+        </label>
+        <label>
+          <span>搜索量</span>
+          <input id="searchVolumeInput" type="number" min="0" step="1" required>
+        </label>
+        <label>
+          <span>搜索单量</span>
+          <input id="searchOrderCountInput" type="number" min="0" step="1" required>
+        </label>
+        <label>
+          <span>推广单量</span>
+          <input id="promotionOrderCountInput" type="number" min="0" step="1" required>
+        </label>
+        <label>
+          <span>加购量</span>
+          <input id="addCartCountInput" type="number" min="0" step="1" required>
+        </label>
+        <label>
+          <span>客单价</span>
+          <input id="averageOrderValueInput" type="number" min="0" step="0.01" required>
+        </label>
+        <button class="primary-btn" type="submit">保存今日数据</button>
+      </form>
+    </section>
+
+    <section class="section" aria-labelledby="metricsTitle">
+      <div class="section-title">
+        <h2 id="metricsTitle">关键数据指标及变化</h2>
+        <p id="metricsSubtitle"></p>
+      </div>
+      <div class="metric-grid" id="metricGrid"></div>
+    </section>
+
+    <section class="section" aria-labelledby="copyTitle">
+      <div class="section-title">
+        <h2 id="copyTitle">今日数据复制区</h2>
+        <p>复制当前链接、当前研究日期的数据，粘贴到表格时会自动形成 1 行 8 列。</p>
+      </div>
+      <div class="copy-box">
+        <div class="copy-table-wrap" id="copyTableWrap"></div>
+        <button class="secondary-btn" id="copyBtn" type="button">一键复制</button>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="analysisTitle">
+      <div class="section-title">
+        <h2 id="analysisTitle">数据分析结论</h2>
+        <p>基于当前链接今日与昨日变化自动判断。</p>
+      </div>
+      <div class="analysis-grid" id="analysisGrid"></div>
+    </section>
+
+    <section class="section" aria-labelledby="historyTitle">
+      <div class="section-title">
+        <h2 id="historyTitle">最近 7 天数据</h2>
+        <p>只展示当前链接，按日期倒序，并根据最近 7 天生成复盘结论。</p>
+      </div>
+      <div class="seven-day-analysis" id="sevenDayAnalysis"></div>
+      <div class="history-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>交易金额</th>
+              <th>销量</th>
+              <th>搜索量</th>
+              <th>搜索单量</th>
+              <th>搜索转化率</th>
+              <th>推广单量</th>
+              <th>加购量</th>
+              <th>客单价</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="historyRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status"></div>
+  </main>
 
   <script type="module" src="/src/main.js"></script>
 </body>

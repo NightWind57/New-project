@@ -1,722 +1,888 @@
-const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
-    const OLD_REFERENCE_KEY = "buyerShowReferenceTexts";
-    const MATERIAL_KEY = "buyerShowMaterials";
-    const CUSTOM_POINTS_KEY = "customSellingPoints";
-    const CUSTOM_SCENES_KEY = "customUseScenes";
-    const SELLING_OPTIONS_KEY = "sellingPointOptions";
-    const SCENE_OPTIONS_KEY = "useSceneOptions";
-    const HISTORY_KEY = "generationHistory";
+const STORAGE_KEY = "dailyLinkMetrics";
+const SELECTED_DATES_KEY = "dailyLinkSelectedDates";
+const LEGACY_LINK_KEYS = ["linkA", "linkB", "linkC"];
 
-    const BASE_POINTS = ["快充", "低温", "颜值", "对比杂牌", "对比旧充电器"];
-    const BASE_SCENES = ["刚换手机", "办公室用", "家里用", "朋友推荐购买", "网络种草购买", "回购"];
-    const CUSTOM_OPTION = "自定义";
+const METRICS = [
+  { key: "transactionAmount", label: "交易金额", unit: "currency", value: record => numberValue(record.transactionAmount) },
+  { key: "salesVolume", label: "销量", unit: "decimal0", value: getSalesVolume },
+  { key: "searchVolume", label: "搜索量", unit: "integer", value: record => numberValue(record.searchVolume) },
+  { key: "searchOrderCount", label: "搜索单量", unit: "integer", value: record => numberValue(record.searchOrderCount) },
+  { key: "searchConversionRate", label: "搜索转化率", unit: "percentRate", value: getSearchConversionRate },
+  { key: "promotionOrderCount", label: "推广单量", unit: "integer", value: record => numberValue(record.promotionOrderCount) },
+  { key: "addCartCount", label: "加购量", unit: "integer", value: record => numberValue(record.addCartCount) },
+  { key: "averageOrderValue", label: "客单价", unit: "currency", value: record => numberValue(record.averageOrderValue) }
+];
 
-    const POINT_LINES = {
-      "快充": ["出门前插一会儿就能补不少电", "中午吃饭前插上，回来电量明显多了", "平时临时补电挺方便", "不用一直等着手机充电", "充电速度比之前旧头快不少"],
-      "低温": ["充的时候温度比较稳", "不像之前那个一会儿就烫", "边回消息边充也没那么热", "手摸着不会有明显发烫感", "晚上放床头充更安心"],
-      "颜值": ["颜色比图片里更耐看", "放桌面不突兀", "粉色不是廉价粉", "白色很干净", "灰色有质感", "和桌面其他东西挺搭"],
-      "对比杂牌": ["杂牌头用着总有点不放心", "之前便宜头充电发热明显", "给新手机用，还是不想太将就", "还是选个靠谱点的牌子安心", "比之前那个杂牌头用着踏实很多"],
-      "对比旧充电器": ["之前那个充得慢还容易热", "旧头用了很久，感觉也该换了", "换了之后体验明显舒服一点", "以前总觉得充电器都差不多，换了才发现区别挺明显", "之前旧充电器放家里，现在这个放办公室刚好"]
+const state = {
+  data: loadData(),
+  selectedDates: loadSelectedDates()
+};
+
+const els = {
+  addLinkForm: document.getElementById("addLinkForm"),
+  newLinkNameInput: document.getElementById("newLinkNameInput"),
+  newLinkIdInput: document.getElementById("newLinkIdInput"),
+  linkEmptyState: document.getElementById("linkEmptyState"),
+  linkTabs: document.getElementById("linkTabs"),
+  linkControls: document.getElementById("linkControls"),
+  editLinkNameInput: document.getElementById("editLinkNameInput"),
+  editLinkIdInput: document.getElementById("editLinkIdInput"),
+  saveLinkBtn: document.getElementById("saveLinkBtn"),
+  deleteLinkBtn: document.getElementById("deleteLinkBtn"),
+  studyDateInput: document.getElementById("studyDateInput"),
+  toggleEntryBtn: document.getElementById("toggleEntryBtn"),
+  entryPanel: document.getElementById("entryPanel"),
+  entryForm: document.getElementById("entryForm"),
+  dateInput: document.getElementById("dateInput"),
+  transactionAmountInput: document.getElementById("transactionAmountInput"),
+  searchVolumeInput: document.getElementById("searchVolumeInput"),
+  searchOrderCountInput: document.getElementById("searchOrderCountInput"),
+  promotionOrderCountInput: document.getElementById("promotionOrderCountInput"),
+  addCartCountInput: document.getElementById("addCartCountInput"),
+  averageOrderValueInput: document.getElementById("averageOrderValueInput"),
+  metricsSubtitle: document.getElementById("metricsSubtitle"),
+  metricGrid: document.getElementById("metricGrid"),
+  copyTableWrap: document.getElementById("copyTableWrap"),
+  copyBtn: document.getElementById("copyBtn"),
+  analysisGrid: document.getElementById("analysisGrid"),
+  sevenDayAnalysis: document.getElementById("sevenDayAnalysis"),
+  historyRows: document.getElementById("historyRows"),
+  toast: document.getElementById("toast")
+};
+
+init();
+
+function init() {
+  ensureActiveLink();
+  ensureSelectedDateForActiveLink();
+  bindEvents();
+  render();
+}
+
+function bindEvents() {
+  els.addLinkForm.addEventListener("submit", addLink);
+  els.saveLinkBtn.addEventListener("click", saveActiveLink);
+  els.deleteLinkBtn.addEventListener("click", deleteActiveLink);
+  els.studyDateInput.addEventListener("change", changeStudyDate);
+  els.toggleEntryBtn.addEventListener("click", toggleEntryPanel);
+  els.entryForm.addEventListener("submit", saveRecord);
+  els.copyBtn.addEventListener("click", copyTodayData);
+}
+
+function render() {
+  renderLinkManagement();
+  const link = currentLink();
+  if (!link) {
+    renderEmptyDashboard();
+    return;
+  }
+
+  const records = sortedRecords(link.records);
+  const selectedDate = getSelectedDateForActiveLink(records);
+  const currentRecord = records.find(record => record.date === selectedDate) || null;
+  const yesterday = currentRecord ? findPreviousRecord(records, currentRecord.date) : null;
+  const recentRecords = records.filter(record => record.date <= selectedDate).slice(0, 7);
+
+  els.studyDateInput.value = selectedDate;
+  fillForm(currentRecord, selectedDate);
+  renderMetrics(currentRecord, yesterday, selectedDate);
+  renderCopyBox(currentRecord);
+  renderAnalysis(currentRecord, yesterday);
+  renderSevenDayAnalysis(recentRecords);
+  renderHistory(recentRecords);
+}
+
+function renderLinkManagement() {
+  const links = state.data.links;
+  const link = currentLink();
+  const hasLinks = links.length > 0;
+
+  els.linkEmptyState.hidden = hasLinks;
+  els.linkTabs.hidden = !hasLinks;
+  els.linkControls.hidden = !hasLinks;
+  els.toggleEntryBtn.disabled = !hasLinks;
+
+  renderTabs();
+
+  if (!link) return;
+  els.editLinkNameInput.value = link.name;
+  els.editLinkIdInput.value = link.linkId || "";
+}
+
+function renderEmptyDashboard() {
+  const today = toDateInputValue(new Date());
+  els.studyDateInput.value = today;
+  fillForm(null, today);
+  els.entryPanel.hidden = true;
+  els.metricsSubtitle.textContent = "请先添加一个目标链接";
+  els.metricGrid.innerHTML = `<div class="empty-card">请先添加一个目标链接，再录入和分析数据。</div>`;
+  els.copyTableWrap.innerHTML = `<div class="empty-copy">当前日期暂无数据</div>`;
+  els.analysisGrid.innerHTML = `<div class="empty-card">暂无运营结论。先添加目标链接并录入数据。</div>`;
+  els.sevenDayAnalysis.innerHTML = `<div class="empty-card">数据不足，至少录入 3 天后生成趋势分析。</div>`;
+  els.historyRows.innerHTML = `<tr><td colspan="10" class="empty-row">请先添加一个目标链接</td></tr>`;
+}
+
+function renderTabs() {
+  els.linkTabs.innerHTML = state.data.links.map((link, index) => {
+    const active = link.id === state.data.activeLinkId;
+    return `
+      <button class="link-tab ${active ? "active" : ""}" type="button" data-link-id="${escapeHtml(link.id)}" role="tab" aria-selected="${active}">
+        <span>链接 ${index + 1}${link.linkId ? ` · ID ${escapeHtml(link.linkId)}` : ""}</span>
+        <strong>${escapeHtml(link.name)}</strong>
+      </button>
+    `;
+  }).join("");
+
+  els.linkTabs.querySelectorAll("[data-link-id]").forEach(button => {
+    button.addEventListener("click", () => setActiveLink(button.dataset.linkId));
+  });
+}
+
+function renderMetrics(currentRecord, yesterday, selectedDate) {
+  if (!currentRecord) {
+    els.metricsSubtitle.textContent = `${currentLink().name}，当前研究日期 ${selectedDate}`;
+    els.metricGrid.innerHTML = `<div class="empty-card">当前日期暂无数据。点击“录入/修改今日数据”添加记录。</div>`;
+    return;
+  }
+
+  els.metricsSubtitle.textContent = `${currentLink().name}，当前研究日期 ${currentRecord.date}${yesterday ? `，对比 ${yesterday.date}` : ""}`;
+  els.metricGrid.innerHTML = METRICS.map(metric => metricCard(metric, currentRecord, yesterday)).join("");
+}
+
+function metricCard(metric, today, yesterday) {
+  const current = metric.value(today);
+  const previous = yesterday ? metric.value(yesterday) : null;
+  const hasCompare = current !== null && previous !== null;
+  const delta = hasCompare ? current - previous : null;
+  const rate = hasCompare && previous ? delta / previous : null;
+  const changeClass = delta > 0 ? "increase" : delta < 0 ? "decrease" : "flat";
+
+  return `
+    <article class="metric-card ${changeClass}">
+      <div class="metric-name">${metric.label}</div>
+      <div class="metric-value">${formatMetric(current, metric.unit)}</div>
+      <div class="metric-compare">
+        <span>昨日：${previous === null ? "暂无" : formatMetric(previous, metric.unit)}</span>
+        <strong>${hasCompare ? `${formatDelta(delta, metric.unit)} / ${formatRate(rate)}` : "暂无昨日对比"}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function renderCopyBox(currentRecord) {
+  if (!currentRecord) {
+    els.copyTableWrap.innerHTML = `<div class="empty-copy">当前日期暂无数据</div>`;
+    return;
+  }
+
+  const rows = copyRows(currentRecord);
+  els.copyTableWrap.innerHTML = `
+    <table class="copy-table">
+      <thead>
+        <tr>
+          ${rows.map(row => `<th>${row.label}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          ${rows.map(row => `<td>${row.value}</td>`).join("")}
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+function buildCopyText(record) {
+  return copyRows(record).map(row => row.copyValue).join("\t");
+}
+
+function copyRows(record) {
+  return [
+    { label: "交易金额", value: formatPlainNumber(numberValue(record.transactionAmount), 0), copyValue: formatPlainNumber(numberValue(record.transactionAmount), 0) },
+    { label: "销量", value: formatMetric(getSalesVolume(record), "decimal0"), copyValue: formatMetric(getSalesVolume(record), "decimal0") },
+    { label: "搜索量", value: formatPlainNumber(numberValue(record.searchVolume), 0), copyValue: formatPlainNumber(numberValue(record.searchVolume), 0) },
+    { label: "搜索单量", value: formatPlainNumber(numberValue(record.searchOrderCount), 0), copyValue: formatPlainNumber(numberValue(record.searchOrderCount), 0) },
+    { label: "搜索转化率", value: formatMetric(getSearchConversionRate(record), "percentRate"), copyValue: formatMetric(getSearchConversionRate(record), "percentRate") },
+    { label: "推广单量", value: formatPlainNumber(numberValue(record.promotionOrderCount), 0), copyValue: formatPlainNumber(numberValue(record.promotionOrderCount), 0) },
+    { label: "加购量", value: formatPlainNumber(numberValue(record.addCartCount), 0), copyValue: formatPlainNumber(numberValue(record.addCartCount), 0) },
+    { label: "客单价", value: formatPlainNumber(numberValue(record.averageOrderValue), 0), copyValue: formatPlainNumber(numberValue(record.averageOrderValue), 0) }
+  ];
+}
+
+async function copyTodayData() {
+  const record = currentRecord();
+  if (!record) {
+    showToast("暂无可复制数据");
+    return;
+  }
+  const text = buildCopyText(record);
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("已复制今日数据");
+  } catch {
+    showToast("复制失败，请手动选择文本");
+  }
+}
+
+function renderAnalysis(today, yesterday) {
+  if (!today) {
+    els.analysisGrid.innerHTML = `<div class="empty-card">暂无运营结论。先录入当前链接数据。</div>`;
+    return;
+  }
+
+  const analysis = buildTodayAnalysis(today, yesterday);
+  els.analysisGrid.innerHTML = `
+    <article class="analysis-card">
+      <span>核心结论</span>
+      <p>${analysis.summary}</p>
+    </article>
+    <article class="analysis-card">
+      <span>变化原因推测</span>
+      <p>${analysis.reason}</p>
+    </article>
+    <article class="analysis-card">
+      <span>下一步建议</span>
+      <p>${analysis.action}</p>
+    </article>
+  `;
+}
+
+function buildTodayAnalysis(today, yesterday) {
+  if (!yesterday) {
+    return {
+      summary: "当前链接还没有昨日基准，先把今天作为后续判断的起点。",
+      reason: "缺少连续数据时，不能判断成交、搜索和加购之间的变化关系。",
+      action: "明天继续录入同口径数据，优先看交易金额、搜索转化率和加购量是否同步变化。"
     };
+  }
 
-    const SCENE_LINES = {
-      "刚换手机": ["刚换了新手机，顺手把充电器也换了", "新手机不想再用之前那个旧充电头", "手机都换新了，充电器也想配个稳一点的"],
-      "办公室用": ["买来放办公室备用", "不想每天把家里的充电器带来带去", "放工位上用刚好，不占地方"],
-      "家里用": ["放在床头用挺方便", "家里多备一个，随手就能充", "晚上睡前充电用着比较安心"],
-      "朋友推荐购买": ["朋友之前买过说还不错，我就跟着入了", "是朋友推荐的，用了几天感觉确实可以", "本来没太在意，朋友说这个温度控制不错才买的"],
-      "网络种草购买": ["之前刷到别人推荐才注意到这个", "看了好几条评价，最后还是入了", "被种草之后买来试试，没想到还挺实用"],
-      "回购": ["之前买过一个，这次又回购", "家里有一个，这次买来放办公室", "用了一段时间觉得不错，又买了一个备用"]
+  const amount = compare(metricValue("transactionAmount", today), metricValue("transactionAmount", yesterday));
+  const sales = compare(metricValue("salesVolume", today), metricValue("salesVolume", yesterday));
+  const search = compare(metricValue("searchVolume", today), metricValue("searchVolume", yesterday));
+  const searchOrders = compare(metricValue("searchOrderCount", today), metricValue("searchOrderCount", yesterday));
+  const conversion = compare(metricValue("searchConversionRate", today), metricValue("searchConversionRate", yesterday));
+  const promotion = compare(metricValue("promotionOrderCount", today), metricValue("promotionOrderCount", yesterday));
+  const cart = compare(metricValue("addCartCount", today), metricValue("addCartCount", yesterday));
+  const aov = compare(metricValue("averageOrderValue", today), metricValue("averageOrderValue", yesterday));
+
+  if (amount.up && sales.up) {
+    return {
+      summary: "链接成交表现提升，整体销售状态向好。",
+      reason: "交易金额和销量同步上升，说明不是单纯客单拉动，成交规模也在扩大。",
+      action: "继续拆流量来源和搜索转化率，确认增长来自搜索还是推广，再决定放大哪个渠道。"
     };
+  }
 
-    const MODULES = {
-      openers: ["昨天下单今天到，先试了一下", "用了几天再来写感受", "本来只是想买个备用的", "之前一直觉得充电器差不多", "这次挑的时候主要看日常用起来稳不稳"],
-      reasons: ["旧充电器用了挺久，确实该换了", "新手机不想随便用杂牌头", "家里和办公室来回带太麻烦", "主要是不想充电时手机一直发热", "看评价里说日常用比较稳才买的"],
-      sceneDetails: ["早上出门前插一会儿会比较安心", "中午吃饭前插上，回来刚好能继续用", "晚上放床头用，不用到处找线", "放在工位上不占地方，临时补电方便", "平时边回消息边充也比较顺手"],
-      details: ["白色看着干净", "灰色比较耐看", "体积比想象中小", "插在排插上不会挡旁边", "包装到手没什么问题", "线和头放一起看着也清爽"],
-      endings: ["总体来说挺省心", "日常用完全够了", "比之前那个舒服很多", "给新手机用着也放心", "不算特别便宜，但用着安心", "目前用下来没什么小毛病"]
+  if (amount.up && sales.down) {
+    return {
+      summary: "成交金额增长主要可能来自客单价提升，而不是销量增长。",
+      reason: "交易金额上升但销量下降，通常是高价 SKU 或套装占比提升，而不是购买人数扩大。",
+      action: "检查客单价变化、套餐占比和价格活动，判断是否高价 SKU 占比提升。"
     };
+  }
 
-    const state = {
-      pointOptions: [],
-      sceneOptions: [],
-      materials: [],
-      generated: [],
-      history: []
+  if (search.down && conversion.up) {
+    return {
+      summary: "搜索流量减少，但搜索成交效率提升。",
+      reason: "搜索入口拿量变少，但进来的用户更精准，当前优先问题不是详情页承接。",
+      action: "优先排查搜索词流量、搜索排名和点击率，不要盲目修改详情页。"
     };
+  }
 
-    const els = {
-      sellingPointOptions: document.getElementById("sellingPointOptions"),
-      sceneOptions: document.getElementById("sceneOptions"),
-      customSellingPointRow: document.getElementById("customSellingPointRow"),
-      customSellingPointInput: document.getElementById("customSellingPointInput"),
-      addSellingPointBtn: document.getElementById("addSellingPointBtn"),
-      customSceneRow: document.getElementById("customSceneRow"),
-      customSceneInput: document.getElementById("customSceneInput"),
-      addSceneBtn: document.getElementById("addSceneBtn"),
-      creativityLevel: document.getElementById("creativityLevel"),
-      useMaterials: document.getElementById("useMaterials"),
-      generateBtn: document.getElementById("generateBtn"),
-      resultList: document.getElementById("resultList"),
-      openMaterialModalBtn: document.getElementById("openMaterialModalBtn"),
-      clearMaterialsBtn: document.getElementById("clearMaterialsBtn"),
-      materialList: document.getElementById("materialList"),
-      materialModal: document.getElementById("materialModal"),
-      closeMaterialModalBtn: document.getElementById("closeMaterialModalBtn"),
-      cancelMaterialBtn: document.getElementById("cancelMaterialBtn"),
-      materialInput: document.getElementById("materialInput"),
-      saveMaterialBtn: document.getElementById("saveMaterialBtn"),
-      toast: document.getElementById("toast")
+  if (search.up && conversion.down) {
+    return {
+      summary: "搜索流量增加，但搜索流量质量或承接效率下降。",
+      reason: "新增搜索流量没有转成订单，可能是搜索词不精准、主图吸引错人或首屏承接不足。",
+      action: "检查新增搜索词是否精准，优化搜索图、标题和首屏承接。"
     };
-
-    function init() {
-      state.pointOptions = loadOptionList(SELLING_OPTIONS_KEY, BASE_POINTS, CUSTOM_POINTS_KEY);
-      state.sceneOptions = loadOptionList(SCENE_OPTIONS_KEY, BASE_SCENES, CUSTOM_SCENES_KEY);
-      state.materials = loadMaterials();
-      state.history = loadArray(HISTORY_KEY);
-      saveArray(SELLING_OPTIONS_KEY, state.pointOptions);
-      saveArray(SCENE_OPTIONS_KEY, state.sceneOptions);
-      saveMaterials();
-      renderOptionGroups();
-      renderMaterials();
-      bindEvents();
-    }
-
-    function bindEvents() {
-      els.generateBtn.addEventListener("click", generateBatch);
-      els.addSellingPointBtn.addEventListener("click", addCustomPoint);
-      els.addSceneBtn.addEventListener("click", addCustomScene);
-      els.openMaterialModalBtn.addEventListener("click", openMaterialModal);
-      els.closeMaterialModalBtn.addEventListener("click", closeMaterialModal);
-      els.cancelMaterialBtn.addEventListener("click", closeMaterialModal);
-      els.saveMaterialBtn.addEventListener("click", saveMaterialFromModal);
-      els.clearMaterialsBtn.addEventListener("click", clearMaterials);
-      els.materialModal.addEventListener("click", event => {
-        if (event.target === els.materialModal) closeMaterialModal();
-      });
-    }
-
-    function renderOptionGroups() {
-      renderCheckboxes(els.sellingPointOptions, "point", [...state.pointOptions, CUSTOM_OPTION], () => {
-        els.customSellingPointRow.classList.toggle("show", isChecked("point", CUSTOM_OPTION));
-      }, deletePointOption);
-      renderCheckboxes(els.sceneOptions, "scene", [...state.sceneOptions, CUSTOM_OPTION], () => {
-        els.customSceneRow.classList.toggle("show", isChecked("scene", CUSTOM_OPTION));
-      }, deleteSceneOption);
-    }
-
-    function renderCheckboxes(container, name, options, onChange, onDelete) {
-      const selected = getCheckedValues(name);
-      container.innerHTML = "";
-      options.forEach(option => {
-        const label = document.createElement("label");
-        label.className = "option-pill";
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.name = name;
-        input.value = option;
-        input.checked = selected.includes(option);
-        input.addEventListener("change", onChange);
-        label.append(input, document.createTextNode(option));
-        if (option !== CUSTOM_OPTION) {
-          const del = document.createElement("button");
-          del.type = "button";
-          del.className = "option-delete";
-          del.textContent = "×";
-          del.addEventListener("click", event => {
-            event.preventDefault();
-            event.stopPropagation();
-            onDelete(option);
-          });
-          label.appendChild(del);
-        }
-        container.appendChild(label);
-      });
-    }
-
-    function addCustomPoint() {
-      const value = els.customSellingPointInput.value.trim();
-      if (!value || value === CUSTOM_OPTION) return showToast("请输入自定义卖点");
-      if (state.pointOptions.includes(value)) return showToast("这个卖点已经存在");
-      state.pointOptions.push(value);
-      saveArray(SELLING_OPTIONS_KEY, state.pointOptions);
-      els.customSellingPointInput.value = "";
-      renderOptionGroups();
-      setChecked("point", value, true);
-      setChecked("point", CUSTOM_OPTION, true);
-      showToast("自定义卖点已添加");
-    }
-
-    function addCustomScene() {
-      const value = els.customSceneInput.value.trim();
-      if (!value || value === CUSTOM_OPTION) return showToast("请输入自定义场景");
-      if (state.sceneOptions.includes(value)) return showToast("这个场景已经存在");
-      state.sceneOptions.push(value);
-      saveArray(SCENE_OPTIONS_KEY, state.sceneOptions);
-      els.customSceneInput.value = "";
-      renderOptionGroups();
-      setChecked("scene", value, true);
-      setChecked("scene", CUSTOM_OPTION, true);
-      showToast("自定义场景已添加");
-    }
-
-    function deletePointOption(option) {
-      if (!confirm("确定删除这个卖点吗？")) return;
-      state.pointOptions = state.pointOptions.filter(item => item !== option);
-      saveArray(SELLING_OPTIONS_KEY, state.pointOptions);
-      renderOptionGroups();
-      showToast("卖点已删除");
-    }
-
-    function deleteSceneOption(option) {
-      if (!confirm("确定删除这个使用场景吗？")) return;
-      state.sceneOptions = state.sceneOptions.filter(item => item !== option);
-      saveArray(SCENE_OPTIONS_KEY, state.sceneOptions);
-      renderOptionGroups();
-      showToast("使用场景已删除");
-    }
-
-    function generateBatch() {
-      const points = getCheckedValues("point").filter(value => value !== CUSTOM_OPTION);
-      const scenes = getCheckedValues("scene").filter(value => value !== CUSTOM_OPTION);
-      const creativity = els.creativityLevel.value;
-      if (!points.length) return showToast("请至少选择一个卖点");
-      if (!scenes.length) return showToast("请至少选择一个使用场景");
-
-      const materialPool = els.useMaterials.checked ? state.materials : [];
-      const generated = [];
-      let attempts = 0;
-      while (generated.length < 10 && attempts < 120) {
-        attempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, materialPool);
-        if (!isTooSimilarToAny(item.content, generated.map(existing => existing.content)) && !isTooSimilarToAny(item.content, state.history)) {
-          generated.push(item);
-        }
-      }
-      while (generated.length < 10 && attempts < 240) {
-        attempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, materialPool);
-        if (!isTooSimilarToAny(item.content, generated.map(existing => existing.content))) {
-          generated.push(item);
-        }
-      }
-      while (generated.length < 10) {
-        const item = createGeneratedItem(points, scenes, creativity, materialPool);
-        if (!generated.some(existing => existing.content === item.content)) {
-          generated.push(item);
-        } else {
-          item.content = `${item.content.replace(/。$/, "")}，整体还是挺顺手的。`;
-          generated.push(item);
-        }
-      }
-      state.generated = generated.slice(0, 10);
-      rememberHistory(state.generated.map(item => item.content));
-      renderGenerated();
-      showToast(`已生成 ${state.generated.length} 条文案`);
-    }
-
-    function createGeneratedItem(points, scenes, creativity, materialPool) {
-      const point = pick(points);
-      const secondPoint = Math.random() > 0.55 ? pick(points.filter(item => item !== point)) : "";
-      const scene = pick(scenes);
-      const lengthType = pickLengthType(creativity);
-      const useMaterial = materialPool.length && Math.random() < 0.42;
-      const content = useMaterial
-        ? buildFromMaterial(pick(materialPool), { point, secondPoint, scene, creativity, lengthType })
-        : buildFromModules({ point, secondPoint, scene, creativity, lengthType });
-      return { id: createId(), content, point, scene, lengthType, editing: false, draft: "" };
-    }
-
-    function buildFromModules({ point, secondPoint, scene, creativity, lengthType }) {
-      const parts = {
-        opener: pick([...(SCENE_LINES[scene] || customSceneLines(scene)), ...MODULES.openers]),
-        reason: pickReason(point, creativity),
-        scene: pick([...(SCENE_LINES[scene] || customSceneLines(scene)), ...MODULES.sceneDetails]),
-        point: pickPointLine(point),
-        second: secondPoint && lengthType !== "短" ? pickPointLine(secondPoint) : "",
-        detail: pickDetail(point, creativity),
-        ending: pickEnding(creativity)
-      };
-      const layouts = {
-        "短": [["scene", "point"], ["opener", "ending"], ["reason", "point"]],
-        "中": [["opener", "point", "ending"], ["reason", "scene", "point", "ending"], ["scene", "point", "detail"]],
-        "长": [["opener", "reason", "scene", "point", "detail", "ending"], ["reason", "scene", "point", "second", "detail", "ending"], ["opener", "scene", "point", "second", "ending"]]
-      };
-      return trimToLength(compactText(pick(layouts[lengthType]).map(key => parts[key])), lengthType);
-    }
-
-    function buildFromMaterial(material, context) {
-      const structure = extractStructure(material.content);
-      const parts = {
-        opener: pick([pick(SCENE_LINES[context.scene] || customSceneLines(context.scene)), pick(MODULES.openers)]),
-        reason: pick([reasonFromTag(structure.reasonTag), pickReason(context.point, context.creativity)]),
-        scene: pick(SCENE_LINES[context.scene] || customSceneLines(context.scene)),
-        point: pickPointLine(context.point),
-        second: context.secondPoint && context.lengthType !== "短" ? pickPointLine(context.secondPoint) : "",
-        detail: pickDetail(context.point, context.creativity),
-        ending: pickEnding(context.creativity)
-      };
-      const order = structure.order.length >= 3 ? structure.order : ["opener", "reason", "scene", "point", "ending"];
-      if (!order.includes("point")) order.splice(Math.min(2, order.length), 0, "point");
-      const chosen = order.filter(key => parts[key]).slice(0, context.lengthType === "短" ? 3 : context.lengthType === "中" ? 5 : 7);
-      return trimToLength(compactText(chosen.map(key => parts[key])), context.lengthType);
-    }
-
-    function extractStructure(text) {
-      const sentences = String(text || "").split(/(?<=。)/).map(item => item.trim()).filter(Boolean);
-      const reasonSentence = sentences.find(item => /怕|不想|旧|杂牌|推荐|种草|回购|换/.test(item)) || "";
-      const reasonTag = /杂牌|不放心/.test(reasonSentence) ? "brand" :
-        /推荐|朋友/.test(reasonSentence) ? "friend" :
-        /种草|评价/.test(reasonSentence) ? "seed" :
-        /回购|又买/.test(reasonSentence) ? "repurchase" : "normal";
-      const order = sentences.map(sentence => {
-        if (/刚换|之前|买来|朋友|种草|回购/.test(sentence)) return "opener";
-        if (/怕|不想|旧|杂牌|推荐|评价/.test(sentence)) return "reason";
-        if (/办公室|家里|床头|出门|中午|晚上|工位/.test(sentence)) return "scene";
-        if (/充|温度|烫|颜色|桌面|杂牌|旧头/.test(sentence)) return "point";
-        return "ending";
-      });
-      return { reasonTag, order };
-    }
-
-    function renderGenerated() {
-      els.resultList.innerHTML = "";
-      if (!state.generated.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "选择卖点和场景后，点击“生成文案”。";
-        els.resultList.appendChild(empty);
-        return;
-      }
-      state.generated.forEach(item => els.resultList.appendChild(createGeneratedCard(item)));
-    }
-
-    function createGeneratedCard(item) {
-      const card = document.createElement("article");
-      card.className = "copy-card";
-      const body = item.editing ? document.createElement("textarea") : document.createElement("div");
-      if (item.editing) {
-        body.className = "copy-editor";
-        body.value = item.draft;
-      } else {
-        body.className = "copy-body";
-        body.textContent = item.content;
-      }
-      const meta = document.createElement("div");
-      meta.className = "meta-row";
-      meta.append(createChip(item.point), createChip(item.scene), createChip(item.lengthType));
-      const actions = document.createElement("div");
-      actions.className = "card-actions";
-      if (item.editing) {
-        actions.append(
-          createButton("保存修改", "btn small primary", () => saveGeneratedEdit(item, card)),
-          createButton("取消编辑", "btn small ghost", () => cancelGeneratedEdit(item))
-        );
-      } else {
-        actions.append(
-          createButton("编辑", "btn small ghost", () => startGeneratedEdit(item)),
-          createButton("复制", "btn small primary", () => copyText(item.content)),
-          createButton("添加到素材库", "btn small ghost", () => addGeneratedToMaterials(item))
-        );
-      }
-      card.append(body, meta, actions);
-      return card;
-    }
-
-    function startGeneratedEdit(item) {
-      item.editing = true;
-      item.draft = item.content;
-      renderGenerated();
-    }
-
-    function saveGeneratedEdit(item, card) {
-      const value = card.querySelector(".copy-editor").value.trim();
-      if (!value) return showToast("请填写文案内容");
-      item.content = value;
-      item.lengthType = getLengthType(value);
-      item.editing = false;
-      item.draft = "";
-      renderGenerated();
-      showToast("修改已保存");
-    }
-
-    function cancelGeneratedEdit(item) {
-      item.editing = false;
-      item.draft = "";
-      renderGenerated();
-    }
-
-    function addGeneratedToMaterials(item) {
-      addMaterial(item.content);
-    }
-
-    function openMaterialModal() {
-      els.materialInput.value = "";
-      els.materialModal.classList.add("open");
-      setTimeout(() => els.materialInput.focus(), 0);
-    }
-
-    function closeMaterialModal() {
-      els.materialModal.classList.remove("open");
-      els.materialInput.value = "";
-    }
-
-    function saveMaterialFromModal() {
-      const content = els.materialInput.value.trim();
-      if (!content) return showToast("请输入素材文案");
-      if (addMaterial(content)) closeMaterialModal();
-    }
-
-    function addMaterial(content) {
-      const finalContent = String(content || "").trim();
-      if (!finalContent) return false;
-      if (state.materials.some(item => item.content === finalContent)) {
-        showToast("素材库中已存在");
-        return false;
-      }
-      state.materials.unshift({ id: createId(), content: finalContent, createdAt: new Date().toISOString(), editing: false, draft: "" });
-      saveMaterials();
-      renderMaterials();
-      showToast("已添加到素材库");
-      return true;
-    }
-
-    function renderMaterials() {
-      els.materialList.innerHTML = "";
-      if (!state.materials.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "还没有素材，点击“添加素材”保存买家秀文案。";
-        els.materialList.appendChild(empty);
-        return;
-      }
-      state.materials.forEach(item => els.materialList.appendChild(createMaterialCard(item)));
-    }
-
-    function createMaterialCard(item) {
-      const card = document.createElement("article");
-      card.className = "copy-card";
-      const body = item.editing ? document.createElement("textarea") : document.createElement("div");
-      if (item.editing) {
-        body.className = "copy-editor";
-        body.value = item.draft;
-      } else {
-        body.className = "copy-body";
-        body.textContent = item.content;
-      }
-      const meta = document.createElement("div");
-      meta.className = "meta-row";
-      meta.append(createChip(formatDate(item.createdAt)));
-      const actions = document.createElement("div");
-      actions.className = "card-actions";
-      if (item.editing) {
-        actions.append(
-          createButton("保存修改", "btn small primary", () => saveMaterialEdit(item, card)),
-          createButton("取消编辑", "btn small ghost", () => cancelMaterialEdit(item))
-        );
-      } else {
-        actions.append(
-          createButton("复制", "btn small primary", () => copyText(item.content)),
-          createButton("编辑", "btn small ghost", () => startMaterialEdit(item)),
-          createButton("删除", "btn small danger", () => deleteMaterial(item.id))
-        );
-      }
-      card.append(body, meta, actions);
-      return card;
-    }
-
-    function startMaterialEdit(item) {
-      item.editing = true;
-      item.draft = item.content;
-      renderMaterials();
-    }
-
-    function saveMaterialEdit(item, card) {
-      const value = card.querySelector(".copy-editor").value.trim();
-      if (!value) return showToast("请填写素材文案");
-      if (state.materials.some(existing => existing.id !== item.id && existing.content === value)) {
-        showToast("素材库中已存在");
-        return;
-      }
-      item.content = value;
-      item.editing = false;
-      item.draft = "";
-      saveMaterials();
-      renderMaterials();
-      showToast("素材已更新");
-    }
-
-    function cancelMaterialEdit(item) {
-      item.editing = false;
-      item.draft = "";
-      renderMaterials();
-    }
-
-    function deleteMaterial(id) {
-      if (!confirm("确定删除这条素材吗？")) return;
-      state.materials = state.materials.filter(item => item.id !== id);
-      saveMaterials();
-      renderMaterials();
-      showToast("素材已删除");
-    }
-
-    function clearMaterials() {
-      if (!state.materials.length) return;
-      if (!confirm("确定清空全部素材吗？")) return;
-      state.materials = [];
-      saveMaterials();
-      renderMaterials();
-      showToast("素材库已清空");
-    }
-
-    function loadMaterials() {
-      const current = loadArray(MATERIAL_KEY).map(normalizeMaterial).filter(Boolean);
-      if (current.length) return sortMaterials(current);
-      const oldReferences = loadArray(OLD_REFERENCE_KEY).map(normalizeMaterial).filter(Boolean);
-      if (oldReferences.length) return sortMaterials(dedupeMaterials(oldReferences));
-      const oldItems = loadArray(OLD_LIBRARY_KEY).map(normalizeMaterial).filter(Boolean);
-      return sortMaterials(dedupeMaterials(oldItems));
-    }
-
-    function normalizeMaterial(item) {
-      if (!item || !item.content) return null;
-      return {
-        id: typeof item.id === "string" ? item.id : createId(),
-        content: String(item.content),
-        createdAt: item.createdAt || new Date().toISOString(),
-        editing: false,
-        draft: ""
-      };
-    }
-
-    function saveMaterials() {
-      saveArray(MATERIAL_KEY, state.materials.map(({ id, content, createdAt }) => ({ id, content, createdAt })));
-    }
-
-    function dedupeMaterials(items) {
-      const seen = new Set();
-      return items.filter(item => {
-        if (seen.has(item.content)) return false;
-        seen.add(item.content);
-        return true;
-      });
-    }
-
-    function sortMaterials(items) {
-      return items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    }
-
-    function pickPointLine(point) {
-      if (POINT_LINES[point]) return pick(POINT_LINES[point]);
-      return pick([
-        `主要是看中${point}这一点，日常用起来还挺顺手`,
-        `用了几天，${point}这方面比我预期自然一些`,
-        `买之前就是冲着${point}来的，实际用着没有违和感`,
-        `对我来说${point}比较重要，这个用下来还算稳`
-      ]);
-    }
-
-    function customSceneLines(scene) {
-      return [
-        `${scene}的时候用着比较顺手`,
-        `买来主要就是为了${scene}`,
-        `${scene}这个场景下还挺实用`
-      ];
-    }
-
-    function pickReason(point, creativity) {
-      const pool = [...MODULES.reasons];
-      if (point === "对比杂牌") pool.push("之前用杂牌头有点不放心");
-      if (point === "对比旧充电器") pool.push("旧充电器充一会儿就热，确实该换了");
-      if (point === "低温") pool.push("晚上床头充电还是想温度稳一点");
-      if (creativity === "wild") pool.push("本来没抱太大期待，结果日常用还挺频繁");
-      return pick(pool);
-    }
-
-    function pickDetail(point, creativity) {
-      const pool = [...MODULES.details];
-      if (point === "颜值") pool.push("颜色放桌面上不突兀", "粉色不是廉价粉");
-      if (creativity === "wild") pool.push("这种小配件每天都会用，顺手就很重要");
-      return pick(pool);
-    }
-
-    function pickEnding(creativity) {
-      const pool = [...MODULES.endings];
-      if (creativity === "stable") return pick(pool.slice(0, 6));
-      if (creativity === "wild") pool.push("算是被种草之后比较满意的一次", "小东西换了之后体验还挺明显");
-      return pick(pool);
-    }
-
-    function reasonFromTag(tag) {
-      const map = {
-        brand: "之前用杂牌头有点不放心，这次想换个稳一点的",
-        friend: "朋友说日常用挺稳，我才跟着买来试试",
-        seed: "看了几条评价之后才决定入手",
-        repurchase: "之前用过觉得还可以，这次才又买一个",
-        normal: "旧充电器用了挺久，换新的会踏实些"
-      };
-      return map[tag] || map.normal;
-    }
-
-    function pickLengthType(creativity) {
-      const pool = creativity === "stable" ? ["短", "中", "中", "中", "长"] :
-        creativity === "wild" ? ["短", "中", "长", "长"] : ["短", "中", "中", "长"];
-      return pick(pool);
-    }
-
-    function trimToLength(text, type) {
-      const max = type === "短" ? 46 : type === "中" ? 88 : 138;
-      if (text.length <= max) return text;
-      const sentences = text.split(/(?<=。)/).filter(Boolean);
-      let result = "";
-      for (const sentence of sentences) {
-        if ((result + sentence).length > max) break;
-        result += sentence;
-      }
-      return result || `${text.slice(0, max - 1)}。`;
-    }
-
-    function compactText(parts) {
-      return parts.filter(Boolean).map(part => {
-        const text = String(part).trim();
-        return /[。！？]$/.test(text) ? text : `${text}。`;
-      }).join("").replace(/。。+/g, "。");
-    }
-
-    function isTooSimilarToAny(text, list) {
-      return list.some(item => isTooSimilar(text, item));
-    }
-
-    function isTooSimilar(a, b) {
-      if (!a || !b) return false;
-      if (a === b) return true;
-      if (a.slice(0, 15) === b.slice(0, 15)) return true;
-      const aSentences = a.split("。").filter(Boolean);
-      const bSentences = b.split("。").filter(Boolean);
-      if (aSentences.some(sentence => sentence.length > 10 && bSentences.includes(sentence))) return true;
-      const aTokens = tokenPairs(a);
-      const bTokens = tokenPairs(b);
-      const overlap = aTokens.filter(token => bTokens.includes(token)).length;
-      return overlap / Math.max(aTokens.length, 1) > 0.72;
-    }
-
-    function tokenPairs(text) {
-      return text.replace(/[，。！？、\s]/g, "").match(/.{1,2}/g) || [];
-    }
-
-    function rememberHistory(contents) {
-      state.history = [...contents, ...state.history].slice(0, 100);
-      saveArray(HISTORY_KEY, state.history);
-    }
-
-    function clearHistory() {
-      state.history = [];
-      saveArray(HISTORY_KEY, state.history);
-      showToast("历史已清空");
-    }
-
-    async function copyText(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch (error) {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        textarea.remove();
-      }
-      showToast("已复制");
-    }
-
-    function getCheckedValues(name) {
-      return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(input => input.value);
-    }
-
-    function isChecked(name, value) {
-      return getCheckedValues(name).includes(value);
-    }
-
-    function setChecked(name, value, checked) {
-      const input = document.querySelector(`input[name="${name}"][value="${cssEscape(value)}"]`);
-      if (input) input.checked = checked;
-    }
-
-    function cssEscape(value) {
-      return String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
-    }
-
-    function createButton(text, className, onClick) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = className;
-      button.textContent = text;
-      button.addEventListener("click", onClick);
-      return button;
-    }
-
-    function createChip(text, extraClass = "") {
-      const chip = document.createElement("span");
-      chip.className = `chip ${extraClass}`;
-      chip.textContent = text;
-      return chip;
-    }
-
-    function createId() {
-      return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    }
-
-    function getLengthType(text) {
-      const length = String(text || "").length;
-      if (length <= 46) return "短";
-      if (length <= 88) return "中";
-      return "长";
-    }
-
-    function pick(list) {
-      if (!list || !list.length) return "";
-      return list[Math.floor(Math.random() * list.length)];
-    }
-
-    function loadArray(key) {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(key) || "[]");
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        return [];
-      }
-    }
-
-    function saveArray(key, value) {
-      localStorage.setItem(key, JSON.stringify(value));
-    }
-
-    function loadOptionList(key, defaults, oldCustomKey) {
-      const saved = loadArray(key).filter(Boolean);
-      const oldCustom = loadArray(oldCustomKey).filter(Boolean);
-      return uniqueList([...(saved.length ? saved : defaults), ...oldCustom]);
-    }
-
-    function uniqueList(list) {
-      const seen = new Set();
-      return list.filter(item => {
-        const value = String(item || "").trim();
-        if (!value || value === CUSTOM_OPTION || seen.has(value)) return false;
-        seen.add(value);
-        return true;
-      });
-    }
-
-    function formatDate(value) {
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return "";
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    }
-
-    function showToast(message) {
-      els.toast.textContent = message;
-      els.toast.classList.add("show");
-      clearTimeout(showToast.timer);
-      showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1600);
-    }
-
-    init();
+  }
+
+  if (searchOrders.up && promotion.down) {
+    return {
+      summary: "自然搜索成交增强，推广依赖降低。",
+      reason: "搜索单量上升而推广单量下降，说明自然搜索承接能力在增强。",
+      action: "继续优化搜索承接，保留当前高转化搜索策略。"
+    };
+  }
+
+  if (promotion.up && !amount.up) {
+    return {
+      summary: "推广带来的成交效率可能偏弱。",
+      reason: "推广单量上升但交易金额没有明显上升，可能是低客单、低效人群或投产偏弱。",
+      action: "检查推广人群、关键词、素材和投产，不要只看推广单量。"
+    };
+  }
+
+  if (cart.up && (!sales.up || !searchOrders.up)) {
+    return {
+      summary: "用户兴趣增强，但临门转化不足。",
+      reason: "加购变多但销量或搜索单量没跟上，阻碍可能出现在价格、SKU 或购物车收割。",
+      action: "检查价格、SKU 选择、防选错图、优惠权益和购物车回流。"
+    };
+  }
+
+  if (aov.up && sales.down) {
+    return {
+      summary: "用户购买更高价组合，但整体购买人数可能下降。",
+      reason: "客单价上升同时销量下降，可能是价格门槛变高或低价 SKU 转化变弱。",
+      action: "检查套装 SKU 占比和单头 SKU 转化，判断是否价格门槛变高。"
+    };
+  }
+
+  if (amount.down && search.down && searchOrders.down && promotion.down && cart.down) {
+    return {
+      summary: "链接整体走弱，需要优先排查流量和竞争环境。",
+      reason: "交易金额、搜索量、搜索单量、推广单量、加购量同步下降，说明流量入口和购买意向都在变弱。",
+      action: "检查搜索词、推广消耗、竞品价格、活动权益和主图点击率。"
+    };
+  }
+
+  return {
+    summary: "当前链接没有单一明确主因，优先抓变化最大的指标处理。",
+    reason: `交易金额${directionText(amount.delta)}，搜索量${directionText(search.delta)}，搜索单量${directionText(searchOrders.delta)}，推广单量${directionText(promotion.delta)}，加购量${directionText(cart.delta)}。`,
+    action: conversion.down ? "先处理搜索转化率，检查搜索词精准度、主图点击承接和首屏利益点。" : "先拆成交来源，把搜索成交和推广成交分开看，避免只看总成交。"
+  };
+}
+
+function renderSevenDayAnalysis(records) {
+  if (records.length < 3) {
+    els.sevenDayAnalysis.innerHTML = `<div class="empty-card">数据不足，至少录入 3 天后生成趋势分析。</div>`;
+    return;
+  }
+
+  const chronological = [...records].sort((a, b) => a.date.localeCompare(b.date));
+  const analysis = buildSevenDayAnalysis(chronological);
+  els.sevenDayAnalysis.innerHTML = `
+    <article class="analysis-card">
+      <span>7天趋势判断</span>
+      <p>${analysis.trend}</p>
+    </article>
+    <article class="analysis-card">
+      <span>关键异常</span>
+      <p>${analysis.exception}</p>
+    </article>
+    <article class="analysis-card">
+      <span>下一步建议</span>
+      <p>${analysis.action}</p>
+    </article>
+  `;
+}
+
+function buildSevenDayAnalysis(records) {
+  const amountTrend = trendOf(records, "transactionAmount");
+  const searchTrend = trendOf(records, "searchVolume");
+  const conversionTrend = trendOf(records, "searchConversionRate");
+  const amountDelta = lastDelta(records, "transactionAmount");
+  const searchDelta = lastDelta(records, "searchVolume");
+  const conversionDelta = lastDelta(records, "searchConversionRate");
+  const promotionDelta = lastDelta(records, "promotionOrderCount");
+  const searchOrderDelta = lastDelta(records, "searchOrderCount");
+  const cartDelta = lastDelta(records, "addCartCount");
+  const salesDelta = lastDelta(records, "salesVolume");
+  const aovDelta = lastDelta(records, "averageOrderValue");
+
+  const trend = [
+    `交易金额${trendText(amountTrend)}，搜索量${trendText(searchTrend)}，搜索转化率${trendText(conversionTrend)}。`,
+    `近一日变化：交易金额${deltaBadge(amountDelta, "currency")}，搜索量${deltaBadge(searchDelta, "integer")}，搜索转化率${deltaBadge(conversionDelta, "percentRate")}。`,
+    searchTrend.suddenDrop ? "搜索量出现异常下滑，优先看搜索排名、核心词展现和推广预算变化。" : "搜索入口没有出现断崖式异常，重点看转化和成交结构。"
+  ].join("");
+
+  let exception = "最近 7 天没有明显单点异常，主要看成交、搜索和加购是否同向。";
+  if (promotionDelta > 0 && Math.abs(searchOrderDelta) <= 0.01) {
+    exception = "推广单量上升但搜索单量不动，推广效率可能偏弱。";
+  } else if (searchOrderDelta > 0 && promotionDelta < 0) {
+    exception = "搜索单量上升但推广单量下降，自然搜索承接增强。";
+  } else if (cartDelta > 0 && salesDelta <= 0) {
+    exception = "加购量上升但销量没上升，转化阻碍可能在价格、SKU 或购物车收割。";
+  } else if (cartDelta < 0 && salesDelta < 0) {
+    exception = "加购量和销量同步下降，用户兴趣和成交都在走弱。";
+  } else if (aovDelta > 0 && salesDelta < 0) {
+    exception = "客单价上升但销量下降，需要关注价格门槛。";
+  } else if (aovDelta < 0 && salesDelta > 0) {
+    exception = "客单价下降但销量上升，可能是低价 SKU 或活动带动。";
+  }
+
+  const action = [
+    amountTrend.label === "down" ? "先恢复流量入口和价格竞争力，检查竞品价格、搜索词和活动权益。" : "保留能拉动成交的来源，继续拆搜索成交和推广成交占比。",
+    conversionTrend.label === "down" ? "搜索转化率在走弱时，不要只加流量，先优化搜索图、标题和首屏利益点。" : "搜索转化率没有持续下滑时，可以优先放大高转化流量。"
+  ].join("");
+
+  return { trend, exception, action };
+}
+
+function renderHistory(records) {
+  if (!records.length) {
+    els.historyRows.innerHTML = `<tr><td colspan="10" class="empty-row">当前链接暂无历史数据</td></tr>`;
+    return;
+  }
+
+  els.historyRows.innerHTML = records.map(record => `
+    <tr>
+      <td>${record.date}</td>
+      <td>${formatMetric(metricValue("transactionAmount", record), "currency")}</td>
+      <td>${formatMetric(metricValue("salesVolume", record), "decimal0")}</td>
+      <td>${formatMetric(metricValue("searchVolume", record), "integer")}</td>
+      <td>${formatMetric(metricValue("searchOrderCount", record), "integer")}</td>
+      <td>${formatMetric(metricValue("searchConversionRate", record), "percentRate")}</td>
+      <td>${formatMetric(metricValue("promotionOrderCount", record), "integer")}</td>
+      <td>${formatMetric(metricValue("addCartCount", record), "integer")}</td>
+      <td>${formatMetric(metricValue("averageOrderValue", record), "currency")}</td>
+      <td><button class="text-btn" type="button" data-delete-date="${record.date}">删除</button></td>
+    </tr>
+  `).join("");
+
+  els.historyRows.querySelectorAll("[data-delete-date]").forEach(button => {
+    button.addEventListener("click", () => deleteRecord(button.dataset.deleteDate));
+  });
+}
+
+function fillForm(record, selectedDate) {
+  els.dateInput.value = record?.date || selectedDate || toDateInputValue(new Date());
+  els.transactionAmountInput.value = record?.transactionAmount ?? "";
+  els.searchVolumeInput.value = record?.searchVolume ?? "";
+  els.searchOrderCountInput.value = record?.searchOrderCount ?? "";
+  els.promotionOrderCountInput.value = record?.promotionOrderCount ?? "";
+  els.addCartCountInput.value = record?.addCartCount ?? "";
+  els.averageOrderValueInput.value = record?.averageOrderValue ?? "";
+}
+
+function saveRecord(event) {
+  event.preventDefault();
+  const link = currentLink();
+  if (!link) {
+    showToast("请先添加一个目标链接");
+    return;
+  }
+  const record = {
+    date: els.dateInput.value,
+    transactionAmount: numberValue(els.transactionAmountInput.value),
+    searchVolume: numberValue(els.searchVolumeInput.value),
+    searchOrderCount: numberValue(els.searchOrderCountInput.value),
+    promotionOrderCount: numberValue(els.promotionOrderCountInput.value),
+    addCartCount: numberValue(els.addCartCountInput.value),
+    averageOrderValue: numberValue(els.averageOrderValueInput.value)
+  };
+
+  const existingIndex = link.records.findIndex(item => item.date === record.date);
+  if (existingIndex >= 0) {
+    link.records[existingIndex] = record;
+    showToast("已更新今日数据");
+  } else {
+    link.records.push(record);
+    showToast("已保存今日数据");
+  }
+
+  state.selectedDates[link.id] = record.date;
+  localStorage.setItem(SELECTED_DATES_KEY, JSON.stringify(state.selectedDates));
+  persist();
+  els.entryPanel.hidden = true;
+  render();
+}
+
+function deleteRecord(date) {
+  const link = currentLink();
+  if (!link) return;
+  if (!confirm(`确认删除 ${link.name} 的 ${date} 数据吗？`)) return;
+  link.records = link.records.filter(record => record.date !== date);
+  if (state.selectedDates[link.id] === date) {
+    state.selectedDates[link.id] = latestDate(link.records) || toDateInputValue(new Date());
+    persistSelectedDates();
+  }
+  persist();
+  showToast("已删除该日数据");
+  render();
+}
+
+function addLink(event) {
+  event.preventDefault();
+  const name = els.newLinkNameInput.value.trim();
+  const linkId = els.newLinkIdInput.value.trim();
+  if (!name) {
+    showToast("链接名称不能为空");
+    return;
+  }
+
+  const link = {
+    id: createInternalLinkId(),
+    name,
+    linkId,
+    records: []
+  };
+
+  state.data.links.push(link);
+  state.data.activeLinkId = link.id;
+  state.selectedDates[link.id] = toDateInputValue(new Date());
+  els.newLinkNameInput.value = "";
+  els.newLinkIdInput.value = "";
+  persistSelectedDates();
+  persist();
+  els.entryPanel.hidden = true;
+  showToast("已添加链接");
+  render();
+}
+
+function saveActiveLink() {
+  const link = currentLink();
+  if (!link) return;
+  const nextName = els.editLinkNameInput.value.trim();
+  if (!nextName) {
+    showToast("链接名称不能为空");
+    return;
+  }
+  link.name = nextName;
+  link.linkId = els.editLinkIdInput.value.trim();
+  persist();
+  showToast("链接已保存");
+  render();
+}
+
+function deleteActiveLink() {
+  const link = currentLink();
+  if (!link) return;
+  if (!confirm("确定删除该链接吗？删除后该链接的历史数据也会被删除。")) return;
+
+  state.data.links = state.data.links.filter(item => item.id !== link.id);
+  delete state.selectedDates[link.id];
+  state.data.activeLinkId = state.data.links[0]?.id || "";
+  persistSelectedDates();
+  persist();
+  els.entryPanel.hidden = true;
+  showToast("已删除链接");
+  render();
+}
+
+function setActiveLink(linkId) {
+  if (!state.data.links.some(link => link.id === linkId)) return;
+  state.data.activeLinkId = linkId;
+  const link = currentLink();
+  state.selectedDates[linkId] = latestDate(link?.records || []) || toDateInputValue(new Date());
+  persistSelectedDates();
+  persist();
+  els.entryPanel.hidden = true;
+  render();
+}
+
+function toggleEntryPanel() {
+  if (!currentLink()) {
+    showToast("请先添加一个目标链接");
+    return;
+  }
+  els.entryPanel.hidden = !els.entryPanel.hidden;
+}
+
+function changeStudyDate() {
+  const link = currentLink();
+  if (!link) return;
+  state.selectedDates[link.id] = els.studyDateInput.value || latestDate(link.records) || toDateInputValue(new Date());
+  persistSelectedDates();
+  els.entryPanel.hidden = true;
+  render();
+}
+
+function loadData() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) {
+    return { links: [], activeLinkId: "" };
+  }
+
+  try {
+    const parsed = JSON.parse(stored);
+    return normalizeData(parsed);
+  } catch {
+    return { links: [], activeLinkId: "" };
+  }
+}
+
+function loadSelectedDates() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SELECTED_DATES_KEY) || "{}");
+    LEGACY_LINK_KEYS.forEach(key => {
+      if (parsed[key] && !parsed[`legacy-${key}`]) parsed[`legacy-${key}`] = parsed[key];
+    });
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeData(data) {
+  if (Array.isArray(data?.links)) {
+    const links = data.links
+      .map((link, index) => normalizeLink(link, index))
+      .filter(Boolean);
+
+    const activeLinkId = links.some(link => link.id === data.activeLinkId)
+      ? data.activeLinkId
+      : links[0]?.id || "";
+
+    const normalized = { links, activeLinkId };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  const normalized = migrateLegacyData(data);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+function migrateLegacyData(data) {
+  const legacyActive = localStorage.getItem("activeDailyLink");
+  const links = LEGACY_LINK_KEYS
+    .filter(key => data?.[key])
+    .map((key, index) => ({
+      id: `legacy-${key}`,
+      name: data[key]?.name || labelForLegacyKey(key),
+      linkId: "",
+      records: Array.isArray(data[key]?.records)
+        ? data[key].records.map(record => normalizeRecord(record)).filter(Boolean)
+        : []
+    }));
+
+  return {
+    links,
+    activeLinkId: links.find(link => link.id === `legacy-${legacyActive}`)?.id || links[0]?.id || ""
+  };
+}
+
+function normalizeLink(link, index) {
+  if (!link) return null;
+  const id = String(link.id || createInternalLinkId());
+  return {
+    id,
+    name: String(link.name || `链接${index + 1}`),
+    linkId: String(link.linkId || ""),
+    records: Array.isArray(link.records) ? link.records.map(record => normalizeRecord(record)).filter(Boolean) : []
+  };
+}
+
+function normalizeRecord(record) {
+  if (!record?.date) return null;
+  return {
+    date: record.date,
+    transactionAmount: numberValue(record.transactionAmount ?? record.payAmount),
+    searchVolume: numberValue(record.searchVolume ?? record.visitorCount),
+    searchOrderCount: numberValue(record.searchOrderCount ?? record.payBuyerCount),
+    promotionOrderCount: numberValue(record.promotionOrderCount ?? record.adOrders),
+    addCartCount: numberValue(record.addCartCount),
+    averageOrderValue: numberValue(record.averageOrderValue ?? record.unitPrice)
+  };
+}
+
+function persist() {
+  state.data.links.forEach(link => {
+    link.records = sortedRecords(link.records);
+  });
+  ensureActiveLink();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+}
+
+function currentLink() {
+  return state.data.links.find(link => link.id === state.data.activeLinkId) || null;
+}
+
+function currentRecord() {
+  const link = currentLink();
+  if (!link) return null;
+  const records = sortedRecords(link.records);
+  const selectedDate = getSelectedDateForActiveLink(records);
+  return records.find(record => record.date === selectedDate) || null;
+}
+
+function sortedRecords(records) {
+  return [...records].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function latestDate(records) {
+  return sortedRecords(records)[0]?.date || "";
+}
+
+function getSelectedDateForActiveLink(records) {
+  const link = currentLink();
+  if (!link) return toDateInputValue(new Date());
+  const storedDate = state.selectedDates[link.id];
+  if (storedDate) return storedDate;
+  return ensureSelectedDateForActiveLink(records);
+}
+
+function ensureSelectedDateForActiveLink(records = sortedRecords(currentLink()?.records || [])) {
+  const link = currentLink();
+  if (!link) return toDateInputValue(new Date());
+  const date = state.selectedDates[link.id] || latestDate(records) || toDateInputValue(new Date());
+  state.selectedDates[link.id] = date;
+  persistSelectedDates();
+  return date;
+}
+
+function findPreviousRecord(records, date) {
+  return sortedRecords(records).find(record => record.date < date) || null;
+}
+
+function metricValue(key, record) {
+  const metric = METRICS.find(item => item.key === key);
+  return metric ? metric.value(record) : null;
+}
+
+function getSalesVolume(record) {
+  const amount = numberValue(record.transactionAmount);
+  const aov = numberValue(record.averageOrderValue);
+  return aov > 0 ? amount / aov : null;
+}
+
+function getSearchConversionRate(record) {
+  const searchVolume = numberValue(record.searchVolume);
+  const searchOrderCount = numberValue(record.searchOrderCount);
+  return searchVolume > 0 ? (searchOrderCount / searchVolume) * 100 : null;
+}
+
+function trendOf(records, key) {
+  const values = records.map(record => metricValue(key, record)).filter(value => value !== null);
+  const deltas = values.slice(1).map((value, index) => value - values[index]);
+  const positives = deltas.filter(delta => delta > 0).length;
+  const negatives = deltas.filter(delta => delta < 0).length;
+  const first = values[0] || 0;
+  const last = values.at(-1) || 0;
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length || 0;
+  const range = Math.max(...values) - Math.min(...values);
+  const suddenDrop = deltas.some((delta, index) => {
+    const previous = values[index] || 0;
+    return previous > 0 && delta / previous <= -0.25;
+  });
+
+  let label = "stable";
+  if (positives === deltas.length) label = "up";
+  else if (negatives === deltas.length) label = "down";
+  else if (average && range / average > 0.18) label = "volatile";
+
+  return { label, first, last, suddenDrop };
+}
+
+function lastDelta(records, key) {
+  const latest = records.at(-1);
+  const previous = records.at(-2);
+  if (!latest || !previous) return 0;
+  return (metricValue(key, latest) || 0) - (metricValue(key, previous) || 0);
+}
+
+function trendText(trend) {
+  if (trend.label === "up") return "连续上升";
+  if (trend.label === "down") return "连续下降";
+  if (trend.label === "volatile") return "波动明显";
+  return "基本稳定";
+}
+
+function deltaBadge(delta, unit) {
+  const className = delta > 0 ? "increase" : delta < 0 ? "decrease" : "flat";
+  return `<span class="delta ${className}">${formatDelta(delta, unit)}</span>`;
+}
+
+function compare(current, previous) {
+  if (current === null || previous === null) {
+    return { delta: 0, up: false, down: false, flat: true, flatOrDown: true };
+  }
+  const delta = current - previous;
+  return {
+    delta,
+    up: delta > 0,
+    down: delta < 0,
+    flat: delta === 0,
+    flatOrDown: delta <= 0
+  };
+}
+
+function numberValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function fallbackNumber(value, fallback, useFallbackOnZero = false) {
+  const number = Number(value);
+  if (Number.isFinite(number) && (!useFallbackOnZero || number !== 0)) return number;
+  return numberValue(fallback);
+}
+
+function ensureActiveLink() {
+  if (state.data.links.some(link => link.id === state.data.activeLinkId)) return;
+  state.data.activeLinkId = state.data.links[0]?.id || "";
+}
+
+function persistSelectedDates() {
+  localStorage.setItem(SELECTED_DATES_KEY, JSON.stringify(state.selectedDates));
+}
+
+function createInternalLinkId() {
+  return `link-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function labelForLegacyKey(key) {
+  return {
+    linkA: "链接A",
+    linkB: "链接B",
+    linkC: "链接C"
+  }[key];
+}
+
+function formatMetric(value, unit) {
+  if (value === null) return "--";
+  if (unit === "currency") return formatCurrency(value);
+  if (unit === "percentRate") return `${Number(value || 0).toFixed(2)}%`;
+  if (unit === "decimal0") return Math.round(Number(value) || 0).toLocaleString("zh-CN");
+  return Math.round(Number(value) || 0).toLocaleString("zh-CN");
+}
+
+function formatPlainNumber(value, digits = 0) {
+  if (value === null) return "--";
+  const number = Number(value || 0);
+  return digits === 0 ? String(Math.round(number)) : number.toFixed(digits);
+}
+
+function formatDelta(value, unit) {
+  if (value === null) return "--";
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  if (unit === "currency") return `${prefix}${formatCurrency(absolute)}`;
+  if (unit === "percentRate") return `${prefix}${absolute.toFixed(2)}pct`;
+  if (unit === "decimal0") return `${prefix}${Math.round(absolute).toLocaleString("zh-CN")}`;
+  return `${prefix}${Math.round(absolute).toLocaleString("zh-CN")}`;
+}
+
+function formatRate(value) {
+  if (value === null || !Number.isFinite(value)) return "暂无昨日对比";
+  return `${value > 0 ? "+" : ""}${(value * 100).toFixed(1)}%`;
+}
+
+function directionText(value) {
+  if (value > 0) return `上升 ${formatMetric(value, "integer")}`;
+  if (value < 0) return `下降 ${formatMetric(Math.abs(value), "integer")}`;
+  return "持平";
+}
+
+function formatCurrency(value) {
+  return `¥${Number(value || 0).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function toDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add("show");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1600);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
