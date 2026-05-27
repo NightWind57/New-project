@@ -1,41 +1,62 @@
 # Project Rules
 
+## Site Boundaries
+
+This repository contains two independent Vite frontend sites.
+
+- Buyer show copy generator: repository root (`index.html`, `src/main.js`, `src/style.css`).
+- Operation dashboard: `operation-dashboard/`.
+
+Do not replace one site with the other. Changes for one site must stay inside that site's files unless the user explicitly asks for shared deployment or documentation updates.
+
+## Buyer Show Copy Generator
+
+The buyer show site is the mature production site at:
+
+```text
+https://nightwind57.github.io/New-project/
+```
+
+Required localStorage keys:
+
+- `buyerShowMaterials`
+- `sellingPointOptions`
+- `useSceneOptions`
+- `generationHistory`
+- `editFeedbackHistory`
+
+Do not add backend services, login, database, import/export JSON, search, or unrelated dashboard modules to this site unless explicitly requested.
+
+## Operation Dashboard
+
+The operation dashboard lives under:
+
+```text
+operation-dashboard/
+```
+
+Published path:
+
+```text
+https://nightwind57.github.io/New-project/operation-dashboard/
+```
+
+Required storage key:
+
+- `operationDashboardData`
+
+It is a pure frontend localStorage tool for product link daily metrics. Do not add a backend, database, login system, QianNiu API integration, or Feishu write step unless explicitly requested.
+
 ## QianNiu Daily Data Workflow
 
 - The recurring workflow runs every day at `09:00` Asia/Shanghai.
 - When the workflow runs, open `/Applications/Aliworkbench.app` directly. Do not ask the user for confirmation before opening QianNiu for this task.
 - Collect data for the previous calendar day. Example: if the workflow runs on `2026-05-27`, collect data for `2026-05-26`.
-- Do not write the collected data into Feishu Base unless the user explicitly asks for that again.
-- Do not send Feishu group messages for this workflow unless the user explicitly asks for that again and the required permissions are confirmed.
-- After collecting the data, update the website's `localStorage` data under key `dailyLinkMetrics`, then summarize the collected result in the current thread.
-- The website is a pure frontend Vite app. Do not add a backend, database, login system, QianNiu API integration, or Feishu write step for this workflow unless the user explicitly asks.
+- Read configured product links from the operation dashboard data, using each link object's `linkId`.
+- After collecting data, update only the operation dashboard data and summarize the collected result in the current thread.
+- Do not write Feishu Base records or send Feishu group messages unless the user explicitly asks for that again and permissions are confirmed.
 
-## Link Configuration
-
-- Product links are no longer hardcoded as `linkA` / `linkB` / `linkC`.
-- Read the configured links from browser `localStorage` key `dailyLinkMetrics`.
-- Use each configured link object's `linkId` as the QianNiu / product ID to search.
-- Use each configured link object's `name` as the display name in user-facing summaries.
-- Match collected data back to the same link by its internal `id` or by `linkId`.
-- If a configured link has an empty `linkId`, do not guess. Mark it as skipped and explain that the link ID is missing.
-
-Storage shape:
-
-```json
-{
-  "links": [
-    {
-      "id": "internal unique id",
-      "name": "链接名称",
-      "linkId": "千牛/商品链接ID",
-      "records": []
-    }
-  ],
-  "activeLinkId": "current internal id"
-}
-```
-
-## Data Source And Metrics
+## Operation Metrics
 
 Use QianNiu / 生意参谋 / 商品360 for each configured product.
 
@@ -52,35 +73,17 @@ Important QianNiu navigation rule:
 - In the old version table, read `手淘搜索` and `效果广告`.
 - Do not use the new version flow-source rows as the final source for `搜索量`, `搜索单量`, or `推广单量`.
 
-## Output Format
+## Deployment
 
-Reply with a concise table in the current thread after updating the website data:
+GitHub Pages deployment builds both sites:
 
-| 链接名称 | 链接 ID | 交易金额 | 搜索量 | 搜索单量 | 推广单量 | 加购量 | 客单价 |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+- root build -> `/New-project/`
+- `operation-dashboard` build -> `/New-project/operation-dashboard/`
 
-If a product cannot be collected, do not guess. Mark that row as failed and include the concrete reason.
+Before deployment, run builds for both sites:
 
-## Website Record Format
-
-Each link stores its own records:
-
-- `date`: `YYYY-MM-DD`
-- `transactionAmount`: 交易金额
-- `searchVolume`: 搜索量
-- `searchOrderCount`: 搜索单量
-- `promotionOrderCount`: 推广单量
-- `addCartCount`: 加购人数
-- `averageOrderValue`: 客单价
-
-Computed website metrics:
-
-- `salesVolume`: `transactionAmount / averageOrderValue`
-- `searchConversionRate`: `searchOrderCount / searchVolume * 100`
-
-## Permission Boundaries
-
-- Opening QianNiu for the scheduled collection task is pre-approved by the user.
-- Feishu Base writes are not part of the current workflow.
-- Feishu group notifications are not part of the current workflow.
-- If the user later asks to restore Feishu writes or notifications, confirm scopes and permissions before attempting the write/send step.
+```bash
+npm run build
+cd operation-dashboard
+npm run build
+```

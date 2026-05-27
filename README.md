@@ -1,123 +1,135 @@
-# 链接数据运营看板
+# New project
 
-一个 Vite 纯前端页面，用于每天查看商品链接的核心数据、昨日对比和运营结论。数据只保存在当前电脑浏览器的 `localStorage`，不共享、不接入后端。
+这个仓库现在包含两个互相独立的 Vite 纯前端网站。
 
-## 功能
-
-- 用户可自行添加、编辑、删除目标链接
-- 每个链接包含“链接名称”和“链接 ID”
-- 顶部按用户添加的链接动态生成切换按钮
-- 使用“研究日期”选择当前要查看和分析的日期
-- 每个链接的数据独立保存在浏览器 `localStorage`
-- 展示 8 个核心指标卡片：交易金额、销量、搜索量、搜索单量、搜索转化率、推广单量、加购量、客单价
-- 根据当前链接当前日期和前一条记录生成运营结论
-- 根据最近 7 天数据生成趋势复盘
-- 当前日期数据复制区以 2 行 8 列展示指标和数据
-- 一键复制只复制数据行，使用 tab 分隔，粘贴到 Excel / 飞书表格 / WPS 表格时自动形成 1 行 8 列
-- 支持录入或覆盖当天数据
-- 展示当前链接最近 7 天历史数据，并支持删除某一天
-
-## localStorage
-
-数据保存 key：
+## 目录结构
 
 ```text
-dailyLinkMetrics
+New project/
+  index.html
+  package.json
+  src/
+    main.js
+    style.css
+  operation-dashboard/
+    index.html
+    package.json
+    src/
+      main.js
+      style.css
 ```
 
-数据结构：
+## 网站 1：买家秀文案生成器
 
-```json
-{
-  "links": [
-    {
-      "id": "link-唯一内部ID",
-      "name": "链接名称",
-      "linkId": "千牛/商品链接ID",
-      "records": [
-        {
-          "date": "2026-05-27",
-          "transactionAmount": 0,
-          "searchVolume": 0,
-          "searchOrderCount": 0,
-          "promotionOrderCount": 0,
-          "addCartCount": 0,
-          "averageOrderValue": 0
-        }
-      ]
-    }
-  ],
-  "activeLinkId": "当前选中的内部唯一ID"
-}
-```
+位置：仓库根目录。
 
-说明：
+用途：成熟的充电器买家秀文案素材库 + 文案生成器。
 
-- `id` 是网站内部唯一 ID，用于区分链接。
-- `linkId` 是用户输入的真实商品链接 ID，用于 Codex 后续从千牛搜索商品。
-- `records` 是该链接自己的历史数据。
-- 如果浏览器里已有旧结构 `linkA`、`linkB`、`linkC`，页面会自动迁移为新的 `links` 数组，历史记录不会丢失。
-- 如果旧数据里存在 `visitorCount`、`payBuyerCount`、`payAmount` 等旧字段，读取时会安全转成新字段或忽略缺失字段，不会报错。
+核心功能：
 
-## Codex 每日数据录入工作流
+- 选择卖点
+- 添加自定义卖点
+- 删除卖点选项
+- 选择使用场景
+- 添加自定义使用场景
+- 删除使用场景选项
+- 创意强度：稳定 / 标准 / 发散
+- 开关：参考素材库生成
+- 默认生成 10 条真实买家秀文案
+- 生成结果支持编辑、复制、添加到素材库
+- 素材库支持添加、复制、编辑、删除
+- 使用 `localStorage` 保存数据
 
-1. 每天让 Codex 从千牛获取已配置链接的数据。
-2. 每个链接需要获取以下原始指标：
-   - 交易金额
-   - 搜索量
-   - 搜索单量
-   - 推广单量
-   - 加购量
-   - 客单价
-3. 网站自动计算：
-   - 销量 = 交易金额 / 客单价
-   - 搜索转化率 = 搜索单量 / 搜索量
-4. Codex 将每个链接当天数据录入到网站对应链接下。
-5. 录入后查看：
-   - 今日指标变化
-   - 今日运营结论
-   - 最近 7 天数据分析结论
-
-注意：目前网站仍然是纯前端 localStorage 版本，不接入千牛 API，也不需要自动后台任务。Codex 每天获取数据后，由用户或 Codex 辅助录入到页面中。
-
-## Codex 自动化采集复用说明
-
-1. 这个网站支持用户自己配置链接名称和链接 ID。
-2. Codex 每天执行数据采集时，只需要读取或使用这些链接 ID。
-3. 对不同同事来说，操作流程完全一样，只需要替换链接 ID。
-4. 每个同事可以在自己的浏览器中添加自己的链接。
-5. 每台电脑的数据互不共享，全部保存在本地 `localStorage`。
-6. 如果要帮同事建立同样的自动化项目，只需要：
-   - 部署同一个网站
-   - 让同事在网站中添加自己的链接 ID
-   - 让 Codex 按相同流程从千牛获取这些链接的数据
-   - 按链接 ID 将数据录入到对应链接下
-
-## 研究日期与复制区
-
-- 切换链接后，研究日期默认取该链接最新一条记录的日期。
-- 当前链接没有数据时，研究日期默认今天。
-- 切换研究日期后，指标卡片、当前日期数据复制区、今日运营结论、最近 7 天数据表和最近 7 天分析都会同步更新。
-- 当前日期数据复制区按固定顺序展示：交易金额、销量、搜索量、搜索单量、搜索转化率、推广单量、加购量、客单价。
-- 一键复制内容只包含第二行数据，不包含指标名；字段之间用 tab 分隔。
-
-## 本地运行
+本地运行：
 
 ```bash
 npm install
 npm run dev
 ```
 
-启动后打开终端提示的本地地址，通常是：
-
-```text
-http://localhost:5173
-```
-
-## 构建
+本地构建：
 
 ```bash
 npm run build
 ```
 
-构建产物输出到 `dist/`。
+GitHub Pages 地址：
+
+```text
+https://nightwind57.github.io/New-project/
+```
+
+localStorage key：
+
+- `buyerShowMaterials`
+- `sellingPointOptions`
+- `useSceneOptions`
+- `generationHistory`
+- `editFeedbackHistory`
+
+兼容旧版本数据：
+
+- `buyerShowReferenceTexts` 会迁移为素材库数据
+- `customSellingPoints` 会合并进卖点选项
+- `customUseScenes` 会合并进使用场景选项
+
+## 网站 2：运营数据看板
+
+位置：`operation-dashboard/`
+
+用途：每天录入商品链接运营数据，并查看当前日期、昨日对比和最近 7 天趋势分析。
+
+核心功能：
+
+- 添加、编辑、删除目标链接
+- 每个链接包含链接名称和链接 ID
+- 每个链接的数据独立保存
+- 选择研究日期
+- 录入交易金额、搜索量、搜索单量、推广单量、加购量、客单价
+- 自动计算销量和搜索转化率
+- 当前日期数据复制区支持 1 行 8 列 tab 分隔复制
+- 今日运营结论
+- 最近 7 天数据表
+- 最近 7 天趋势分析
+- 使用 `localStorage` 保存数据
+
+本地运行：
+
+```bash
+cd operation-dashboard
+npm install
+npm run dev
+```
+
+本地构建：
+
+```bash
+cd operation-dashboard
+npm run build
+```
+
+GitHub Pages 地址：
+
+```text
+https://nightwind57.github.io/New-project/operation-dashboard/
+```
+
+localStorage key：
+
+- `operationDashboardData`
+- `dailyLinkSelectedDates`
+
+说明：`dailyLinkSelectedDates` 只保存运营看板的当前研究日期选择，不保存买家秀数据。
+
+## 部署
+
+本仓库使用 `.github/workflows/deploy.yml` 发布 GitHub Pages。
+
+推送到 `main` 分支后会执行：
+
+1. 构建根目录买家秀文案生成器。
+2. 构建 `operation-dashboard/` 运营数据看板。
+3. 将买家秀网站发布到 `/New-project/`。
+4. 将运营看板发布到 `/New-project/operation-dashboard/`。
+
+两个网站的代码、构建产物和 `localStorage` key 独立，后续修改其中一个网站时不要覆盖另一个网站。

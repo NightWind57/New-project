@@ -31,8 +31,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build buyer show generator
         run: npm run build
+
+      - name: Install operation dashboard dependencies
+        working-directory: operation-dashboard
+        run: npm ci
+
+      - name: Build operation dashboard
+        working-directory: operation-dashboard
+        run: npm run build
+
+      - name: Add operation dashboard to Pages artifact
+        run: |
+          mkdir -p dist/operation-dashboard
+          cp -R operation-dashboard/dist/* dist/operation-dashboard/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
