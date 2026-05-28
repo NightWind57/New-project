@@ -53,6 +53,17 @@ npm run dev
 npm run build
 ```
 
+本地测试 Netlify Function：
+
+```bash
+npm install
+OPENAI_API_KEY=你的OpenAIKey npx netlify dev
+```
+
+然后访问 Netlify Dev 提供的本地地址。前端会请求 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI API。不要把 API Key 写进 `src/main.js`、`index.html` 或任何前端文件。
+
+如果没有配置 `OPENAI_API_KEY`，或者 OpenAI API 调用失败，页面会提示“AI生成失败，已使用本地生成器生成”，并自动使用本地规则生成器兜底。
+
 GitHub Pages 地址：
 
 ```text
@@ -133,3 +144,64 @@ localStorage key：
 4. 将运营看板发布到 `/New-project/operation-dashboard/`。
 
 两个网站的代码、构建产物和 `localStorage` key 独立，后续修改其中一个网站时不要覆盖另一个网站。
+
+## Netlify 部署买家秀文案生成器
+
+买家秀文案生成器也可以部署到 Netlify，并通过 Netlify Functions 调用 OpenAI API。
+
+Netlify 部署步骤：
+
+1. 将仓库推送到 GitHub。
+2. 登录 Netlify，选择 Add new site。
+3. 选择 Import an existing project，并连接这个 GitHub 仓库。
+4. Build command 填写：
+
+```bash
+npm run build
+```
+
+5. Publish directory 填写：
+
+```text
+dist
+```
+
+6. Functions directory 使用项目中的：
+
+```text
+netlify/functions
+```
+
+本项目已提供 `netlify.toml`：
+
+```toml
+[build]
+command = "npm run build"
+publish = "dist"
+
+[functions]
+directory = "netlify/functions"
+```
+
+配置 OpenAI API Key：
+
+1. 在 Netlify 项目后台进入 Site configuration。
+2. 打开 Environment variables。
+3. 新增变量：
+
+```text
+OPENAI_API_KEY=你的OpenAI API Key
+```
+
+可选变量：
+
+```text
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+注意事项：
+
+- API Key 只能配置在 Netlify 环境变量里。
+- 不要把 API Key 写进前端代码、README 示例真实值或 GitHub 仓库。
+- 用户数据仍然保存在每个用户自己浏览器的 `localStorage` 中，不会上传到数据库。
+- 素材库内容会作为生成参考发送给 Netlify Function，用于生成当次文案；项目不保存服务端数据库。
