@@ -67,19 +67,22 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "手机刚换新的，配件也想换个稳一点的", "办公室一直缺一个固定充电器",
         "家里只有一个充电头，每次拿来拿去挺麻烦", "之前充电时温度有点明显，所以想换个低温一点的",
         "看了几条评价，感觉这个比较符合我的需求", "朋友用了之后说还行，我才跟着买的",
-        "之前买过一个，用着顺手，所以又买了"
+        "之前买过一个，用着顺手，所以又买了", "主要是每天都要用，想换个稳定一点的",
+        "本来只是想多备一个，后来觉得固定位置放着确实方便", "旧的还能用，但体验已经有点跟不上"
       ],
       sceneDetails: [
-        "放在工位左手边刚好", "平时中午吃饭前插上，回来能补不少电",
+        "放在工位上刚好", "平时中午吃饭前插上，回来能补不少电",
         "晚上放床头用，不用每天拔来拔去", "手机放桌边充，线长也够用",
         "早上出门前临时充一会儿，也能缓一下电量焦虑", "包里放一个也不占地方",
-        "家里一个、办公室一个，用起来省事很多", "给家里人用的话，还是这种省心一点"
+        "家里一个、办公室一个，用起来省事很多", "给家里人用的话，还是这种省心一点",
+        "放在桌面上不占地方，随手插上就能用", "出门前补一会儿电，心里会踏实些"
       ],
       endings: [
         "目前用下来挺省心", "日常用完全够了", "整体比之前舒服不少",
         "给苹果手机用着也放心", "后面应该还会继续回购", "不算特别便宜，但用着踏实",
         "至少不会一直担心发烫", "每天都要用的东西，稳一点更重要",
-        "对我来说这个体验已经够用了", "买套装确实省了不少事"
+        "对我来说这个体验已经够用了", "买套装确实省了不少事",
+        "小东西不算复杂，但用顺手之后确实省事", "目前没有什么需要吐槽的地方"
       ]
     };
 
@@ -91,13 +94,30 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     const exaggeratedPhrases = [
       "完全不发热", "一点都不烫", "秒充", "永远不伤电池", "彻底保护电池",
-      "官方原装级别", "苹果同款"
+      "官方原装级别", "苹果官方同款", "苹果同款"
     ];
+
+    const STRUCTURE_LABELS = {
+      A: "购买原因->使用体验->总体感受",
+      B: "使用场景->问题->产品解决",
+      C: "对比旧款->换后变化->评价",
+      D: "推荐种草来源->下单原因->使用感受",
+      E: "回购->新使用位置->复购理由",
+      F: "刚换手机->不想将就->使用安心"
+    };
 
     const preferredPhraseCandidates = [
       "用着更安心", "温度比较稳", "放办公室刚好", "到手直接能用",
       "比之前那个舒服很多", "不算特别便宜，但用着放心", "日常用完全够了",
-      "用着比较踏实", "省得来回带", "给苹果手机用着也放心"
+      "目前用下来挺省心", "给苹果手机用着也放心", "没有以前那个那么容易热",
+      "用着比较踏实", "省得来回带", "还挺", "比较", "对我来说", "没那么夸张"
+    ];
+
+    const weakGenericPhrases = ["真的", "特别", "非常", "很快", "很好看", "很不错", "超", "巨", "太", "绝"];
+
+    const concreteDetailKeywords = [
+      "办公室", "工位", "床头", "家里", "回购", "刚换手机", "旧充电器", "杂牌",
+      "朋友推荐", "到手", "用了几天", "中午", "出门前", "放包里", "桌面", "新手机"
     ];
 
     const state = {
@@ -138,9 +158,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       state.sceneOptions = loadOptionList(SCENE_OPTIONS_KEY, BASE_SCENES, CUSTOM_SCENES_KEY);
       state.materials = loadMaterials();
       state.history = loadArray(HISTORY_KEY);
-      state.editFeedbackHistory = loadArray(EDIT_FEEDBACK_KEY);
+      state.editFeedbackHistory = loadEditFeedbackHistory();
       saveArray(SELLING_OPTIONS_KEY, state.pointOptions);
       saveArray(SCENE_OPTIONS_KEY, state.sceneOptions);
+      saveArray(EDIT_FEEDBACK_KEY, state.editFeedbackHistory);
       saveMaterials();
       renderOptionGroups();
       renderMaterials();
@@ -250,20 +271,25 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
       setGeneratingState(true);
       try {
-        const copies = await requestAiCopies(points, scenes, creativity);
-        state.generated = copies.map((content, index) => createAiGeneratedItem(content, points, scenes, creativity, index));
+        const copies = await requestFunctionCopies(points, scenes, creativity);
+        state.generated = copies.map((content, index) => createFunctionGeneratedItem(content, points, scenes, creativity, index));
         rememberHistory(state.generated.map(item => item.content));
         renderGenerated();
-        showToast(`AI 已生成 ${state.generated.length} 条文案`);
+        showToast(`已生成 ${state.generated.length} 条文案`);
       } catch (error) {
-        generateLocalBatch(points, scenes, creativity);
-        showToast("AI生成失败，已使用本地生成器生成");
+        console.warn("generate-copy function unavailable:", error.message);
+        generateLocalBatch(points, scenes, creativity, { message: "AI 生成接口暂不可用，已使用本地生成器生成" });
       } finally {
         setGeneratingState(false);
       }
     }
 
-    async function requestAiCopies(points, scenes, creativity) {
+    function setGeneratingState(isGenerating) {
+      els.generateBtn.disabled = isGenerating;
+      els.generateBtn.textContent = isGenerating ? "正在生成中..." : "生成文案";
+    }
+
+    async function requestFunctionCopies(points, scenes, creativity) {
       const response = await fetch("/.netlify/functions/generate-copy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,78 +297,69 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           sellingPoints: points,
           useScenes: scenes,
           creativityLevel: creativity,
-          useMaterialStyle: els.useMaterials.checked,
-          materials: els.useMaterials.checked ? state.materials.map(({ content, createdAt }) => ({ content, createdAt })).slice(0, 50) : [],
-          editFeedbackHistory: state.editFeedbackHistory.slice(0, 100)
+          useMaterialStyle: Boolean(els.useMaterials.checked),
+          materials: state.materials
+            .map(({ content, createdAt }) => ({ content, createdAt }))
+            .slice(0, 30),
+          editFeedbackHistory: loadEditFeedbackHistory().slice(0, 20)
         })
       });
-      if (!response.ok) throw new Error("AI request failed");
+      if (!response.ok) throw new Error(`Function returned ${response.status}`);
       const data = await response.json();
-      const copies = Array.isArray(data.copies) ? data.copies.map(item => String(item || "").trim()).filter(Boolean) : [];
-      if (copies.length !== 10) throw new Error("AI response must contain 10 copies");
+      const copies = Array.isArray(data?.copies)
+        ? data.copies.map(item => typeof item === "string" ? item : item?.content).map(item => String(item || "").trim()).filter(Boolean)
+        : [];
+      if (copies.length !== 10) throw new Error("Function response must contain 10 copies");
       return copies;
     }
 
-    function createAiGeneratedItem(content, points, scenes, creativity, index) {
-      const point = detectSelectedValue(content, points) || points[index % points.length] || "";
-      const scene = detectSelectedValue(content, scenes) || scenes[index % scenes.length] || "";
+    function generateLocalBatch(points, scenes, creativity, options = {}) {
+      const generated = generateDiverseCopies(10, { points, scenes, creativity, useMaterials: els.useMaterials.checked });
+      state.generated = generated.slice(0, 10);
+      rememberHistory(state.generated.map(item => item.content));
+      renderGenerated();
+      showToast(options.message || `已生成 ${state.generated.length} 条文案`);
+    }
+
+    function createFunctionGeneratedItem(content, points, scenes, creativity, index) {
+      const point = points[index % points.length] || "";
+      const scene = scenes[index % scenes.length] || "";
       return {
         id: createId(),
         content,
         point,
+        secondPoint: "",
         scene,
         lengthType: getLengthType(content),
-        structureKey: "AI",
-        openerKey: normalizeKey(content),
+        structureKey: "function",
+        openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
         endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
         selectedSellingPoints: [...points],
         selectedUseScenes: [...scenes],
         creativityLevel: creativity,
+        useMaterialStyle: Boolean(els.useMaterials.checked),
         editing: false,
         draft: "",
-        originalText: ""
+        originalText: content
       };
     }
 
-    function detectSelectedValue(text, options) {
-      return options.find(option => text.includes(option) || relatedKeywords(option).some(keyword => text.includes(keyword))) || "";
-    }
-
-    function relatedKeywords(option) {
-      const map = {
-        "快充": ["补电", "速度", "充得"],
-        "低温": ["温度", "发热", "烫"],
-        "颜值": ["颜色", "桌面", "好看"],
-        "对比杂牌": ["杂牌", "便宜头", "靠谱"],
-        "对比旧充电器": ["旧头", "旧充电器", "之前那个"],
-        "刚换手机": ["新手机", "刚换"],
-        "办公室用": ["办公室", "工位"],
-        "家里用": ["家里", "床头"],
-        "朋友推荐购买": ["朋友", "推荐"],
-        "网络种草购买": ["种草", "刷到", "评价"],
-        "回购": ["回购", "又买", "之前买过"]
-      };
-      return map[option] || [option];
-    }
-
-    function setGeneratingState(isGenerating) {
-      els.generateBtn.disabled = isGenerating;
-      els.generateBtn.textContent = isGenerating ? "生成中..." : "生成文案";
-    }
-
-    function generateLocalBatch(points, scenes, creativity) {
+    function generateDiverseCopies(count, options) {
+      const points = options.points || [];
+      const scenes = options.scenes || [];
+      const creativity = options.creativity || "standard";
       const materialPool = els.useMaterials.checked ? state.materials : [];
-      const styleProfile = analyzeMaterialStyle(pickMany(materialPool, 5));
+      const styleProfile = options.useMaterials ? analyzeMaterialStyle(pickMany(materialPool, 5)) : createDefaultStyleProfile();
       const editPreference = analyzeEditFeedback();
       const generated = [];
       const stats = createBatchStats();
       let attempts = 0;
-      while (generated.length < 10 && attempts < 260) {
+      while (generated.length < count && attempts < 360) {
         attempts += 1;
         const relaxed = attempts > 180;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats });
+        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats, materialPool, useMaterialStyle: options.useMaterials });
         if (
-          validateGeneratedCopy(item.content, item) &&
+          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
           passesBatchRules(item, stats, relaxed) &&
           !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
           !isTooSimilarToAny(item.content, state.history) &&
@@ -352,11 +369,30 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           rememberBatchItem(stats, item);
         }
       }
-      while (generated.length < 10 && attempts < 420) {
+      while ((generated.length < count || isBatchTooRepetitive(generated, count)) && attempts < 620) {
         attempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats });
+        const localStats = isBatchTooRepetitive(generated, count) ? createStatsFromBatch(generated) : stats;
+        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats: localStats, materialPool, useMaterialStyle: options.useMaterials });
         if (
-          validateGeneratedCopy(item.content, item) &&
+          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
+          passesBatchRules(item, localStats, attempts > 520) &&
+          !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
+          !isTooSimilarToMaterials(item.content, materialPool)
+        ) {
+          generated.push(item);
+          rememberBatchItem(stats, item);
+          trackBatchDiversity(generated, stats);
+        }
+        if (generated.length > count) generated.splice(findMostRepetitiveIndex(generated), 1);
+      }
+      let fallbackAttempts = 0;
+      const fallbackStyleProfile = createDefaultStyleProfile();
+      while (generated.length < count && fallbackAttempts < 240) {
+        fallbackAttempts += 1;
+        const item = createGeneratedItem(points, scenes, creativity, { styleProfile: fallbackStyleProfile, editPreference, stats, materialPool: [], useMaterialStyle: false });
+        if (
+          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
+          !generated.some(existing => existing.content === item.content) &&
           !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
           !isTooSimilarToMaterials(item.content, materialPool)
         ) {
@@ -364,33 +400,21 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           rememberBatchItem(stats, item);
         }
       }
-      let fallbackAttempts = 0;
-      while (generated.length < 10 && fallbackAttempts < 160) {
-        fallbackAttempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats });
+      let hardFallbackAttempts = 0;
+      while (generated.length < count && hardFallbackAttempts < 240) {
+        hardFallbackAttempts += 1;
+        const item = createGeneratedItem(points, scenes, creativity, { styleProfile: fallbackStyleProfile, editPreference, stats, materialPool: [], useMaterialStyle: false });
+        item.content = sanitizeCopy(`${item.content.replace(/。$/, "")}，${pick(MODULES.endings)}。`, editPreference);
         if (
-          validateGeneratedCopy(item.content, item) &&
           !generated.some(existing => existing.content === item.content) &&
+          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
           !isTooSimilarToMaterials(item.content, materialPool)
         ) {
           generated.push(item);
           rememberBatchItem(stats, item);
         }
       }
-      let hardFallbackAttempts = 0;
-      while (generated.length < 10 && hardFallbackAttempts < 240) {
-        hardFallbackAttempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats });
-        item.content = `${item.content.replace(/。$/, "")}，目前用下来还算顺手。`;
-        if (!generated.some(existing => existing.content === item.content) && !isTooSimilarToMaterials(item.content, materialPool)) {
-          generated.push(item);
-          rememberBatchItem(stats, item);
-        }
-      }
-      state.generated = generated.slice(0, 10);
-      rememberHistory(state.generated.map(item => item.content));
-      renderGenerated();
-      showToast(`已生成 ${state.generated.length} 条文案`);
+      return generated.slice(0, count);
     }
 
     function createGeneratedItem(points, scenes, creativity, context) {
@@ -399,11 +423,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const scene = pickNextOption(scenes, context.stats.sceneSequence);
       const lengthType = pickLengthType(creativity, context.editPreference, context.styleProfile);
       const structureKey = pickStructureKey(scene, point, context.styleProfile, context.stats);
-      const result = buildNarrativeCopy({ point, secondPoint, scene, creativity, lengthType, structureKey, ...context });
+      const generatorFn = () => buildNarrativeCopy({ point, secondPoint, scene, creativity, lengthType, structureKey, ...context }).content;
+      const content = regenerateIfTooSimilar(generatorFn(), context.materialPool || [], generatorFn);
+      const result = { content, openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content), endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content) };
       return {
         id: createId(),
         content: result.content,
         point,
+        secondPoint,
         scene,
         lengthType: getLengthType(result.content),
         structureKey,
@@ -412,9 +439,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         selectedSellingPoints: [...points],
         selectedUseScenes: [...scenes],
         creativityLevel: creativity,
+        useMaterialStyle: Boolean(context.useMaterialStyle),
         editing: false,
         draft: "",
-        originalText: ""
+        originalText: result.content
       };
     }
 
@@ -437,70 +465,260 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         F: ["reason", "problem", "point", "ending"]
       };
       const order = structures[context.structureKey] || structures.A;
-      const maxParts = context.lengthType === "短" ? 3 : context.lengthType === "中" ? 4 : 5;
+      const maxParts = context.editPreference.detailBias === "lessDetail" ? 3 : context.lengthType === "短" ? 3 : context.lengthType === "中" ? 4 : 5;
       const chosen = order.filter(key => parts[key]).slice(0, maxParts);
-      const content = sanitizeCopy(trimToLength(compactText(chosen.map(key => parts[key])), context.lengthType), context.editPreference);
+      const content = applyEditPreferences(sanitizeCopy(trimToLength(compactText(chosen.map(key => parts[key])), context.lengthType), context.editPreference), context.editPreference, context);
       return { content, openerKey: normalizeKey(chosen[0] ? parts[chosen[0]] : ""), endingKey: normalizeKey(parts.ending) };
     }
 
     function analyzeMaterialStyle(materials) {
-      const contents = materials.map(item => String(item.content || "")).filter(Boolean);
+      const contents = materials.map(item => String(item.content || "").trim()).filter(Boolean);
+      if (!contents.length) return createDefaultStyleProfile();
+
       const joined = contents.join("。");
-      const avgLength = contents.length ? contents.reduce((sum, text) => sum + text.length, 0) / contents.length : 70;
+      const avgLength = contents.reduce((sum, text) => sum + normalizeText(text).length, 0) / contents.length;
       const count = pattern => contents.filter(text => pattern.test(text)).length;
-      const profile = {
-        toneTypes: [],
-        rhythm: avgLength < 50 ? "short" : avgLength > 95 ? "long" : "medium",
-        reasonFirst: count(/主要是|之前|怕|不想|旧|杂牌/) >= count(/买来放|放在|办公室|床头/),
-        oldProblemFirst: count(/之前.*(现在|换|之后)|旧.*换|比之前/) > 0,
-        recommendationFirst: count(/朋友|推荐|种草|评价/) > 0,
+      const commonPatterns = uniqueList([
+        count(/之前.+现在|之前.+换|以前.+现在/) ? "之前现在" : "",
+        count(/本来.+没想到/) ? "本来没想到" : "",
+        count(/买来放|放在|放到/) ? "买来放" : "",
+        count(/主要是/) ? "主要是" : "",
+        count(/用了几天|用了一段时间/) ? "用了几天" : "",
+        count(/到手之后|到手后/) ? "到手之后" : "",
+        count(/比之前|比以前/) ? "比之前" : "",
+        count(/整体|目前用下来/) ? "整体目前" : "",
+        count(/朋友推荐|朋友说/) ? "朋友推荐" : "",
+        count(/刷到|种草|评价/) ? "网络种草" : ""
+      ]);
+      const preferredDetails = uniqueList([
+        count(/物流|到货|快递/) ? "物流到货细节" : "",
+        count(/为什么买|主要是|不想|怕|刚换/) ? "购买原因" : "",
+        count(/办公室|工位/) ? "办公室" : "",
+        count(/床头|家里|桌边/) ? "床头家里" : "",
+        count(/桌面|颜色|粉色|白色|灰色/) ? "桌面颜色" : "",
+        count(/旧|之前|杂牌|以前/) ? "旧充电器" : "",
+        count(/回购|又买|之前买过/) ? "回购理由" : "",
+        count(/电池健康|电池/) ? "担心电池健康" : "",
+        count(/温度|发热|烫/) ? "温度稳" : ""
+      ]);
+      const toneScores = {
+        "回购分享型": count(/回购|又买|之前买过|第二个/),
+        "对比体验型": count(/之前|以前|旧|杂牌|换|比之前/),
+        "朋友推荐型": count(/朋友|推荐/),
+        "网络种草型": count(/种草|刷到|评价/),
+        "新机换购型": count(/新手机|刚换/),
+        "办公备用型": count(/办公室|工位/),
+        "家用备用型": count(/家里|床头/),
+        "真实评价型": contents.length
+      };
+      const toneTypes = Object.entries(toneScores)
+        .filter(([, score]) => score > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([tone]) => tone)
+        .slice(0, 3);
+
+      const structurePreference = inferStructurePreference(commonPatterns, toneTypes);
+      return {
+        toneType: toneTypes[0] || "真实评价型",
+        toneTypes: toneTypes.length ? toneTypes : ["真实评价型"],
+        structurePreference,
+        sentenceLength: avgLength < 48 ? "short" : avgLength > 96 ? "long" : "medium",
+        rhythm: avgLength < 48 ? "short" : avgLength > 96 ? "long" : "medium",
+        detailDensity: preferredDetails.length >= 4 ? "high" : preferredDetails.length >= 2 ? "medium" : "low",
+        commonPatterns,
+        preferredDetails,
+        reasonFirst: commonPatterns.includes("主要是") || commonPatterns.includes("之前现在"),
+        oldProblemFirst: commonPatterns.includes("之前现在") || commonPatterns.includes("比之前"),
+        recommendationFirst: commonPatterns.includes("朋友推荐") || commonPatterns.includes("网络种草"),
+        preferredOpenings: contents.map(text => text.split("。").filter(Boolean)[0]).filter(Boolean).map(classifyOpening),
+        preferredEndings: contents.map(text => text.split("。").filter(Boolean).pop()).filter(Boolean).map(normalizeKey)
+      };
+    }
+
+    function createDefaultStyleProfile() {
+      return {
+        toneType: "真实评价型",
+        toneTypes: ["真实评价型"],
+        structurePreference: ["购买原因->使用体验->总体感受"],
+        sentenceLength: "medium",
+        rhythm: "medium",
         detailDensity: "medium",
+        commonPatterns: [],
+        preferredDetails: [],
+        reasonFirst: true,
+        oldProblemFirst: false,
+        recommendationFirst: false,
         preferredOpenings: [],
         preferredEndings: []
       };
-      if (/回购|又买|之前买过/.test(joined)) profile.toneTypes.push("回购分享型");
-      if (/旧|之前|比之前|杂牌|换/.test(joined)) profile.toneTypes.push("对比体验型");
-      if (/朋友|推荐/.test(joined)) profile.toneTypes.push("朋友推荐型");
-      if (/种草|刷到|评价/.test(joined)) profile.toneTypes.push("网络种草型");
-      if (/新手机|刚换/.test(joined)) profile.toneTypes.push("新机换购型");
-      if (/办公室|工位/.test(joined)) profile.toneTypes.push("办公备用型");
-      if (/家里|床头/.test(joined)) profile.toneTypes.push("家用备用型");
-      if (!profile.toneTypes.length) profile.toneTypes.push("真实评价型");
-      const detailHits = count(/到手|昨天|今天|办公室|工位|床头|桌面|颜色|中午|晚上|出门|线长|包里/);
-      profile.detailDensity = detailHits >= Math.max(2, contents.length * 0.6) ? "high" : detailHits ? "medium" : "low";
-      profile.preferredOpenings = contents.map(text => text.split("。").filter(Boolean)[0]).filter(Boolean).map(classifyOpening);
-      profile.preferredEndings = contents.map(text => text.split("。").filter(Boolean).pop()).filter(Boolean).map(normalizeKey);
-      return profile;
+    }
+
+    function createNeutralEditPreference() {
+      return {
+        avoidPhrases: [...bannedMarketingPhrases, ...exaggeratedPhrases],
+        preferredPhrases: [],
+        lengthBias: "neutral",
+        detailBias: "neutral",
+        toneBias: "neutral",
+        sceneBias: [],
+        commonUserAdditions: [],
+        commonUserRemovals: [],
+        preferredUsageCounts: {}
+      };
+    }
+
+    function loadEditFeedbackHistory() {
+      return loadArray(EDIT_FEEDBACK_KEY)
+        .map(normalizeEditFeedback)
+        .filter(Boolean)
+        .slice(0, 100);
+    }
+
+    function normalizeEditFeedback(item) {
+      if (!item || !item.originalText || !item.editedText) return null;
+      return {
+        id: typeof item.id === "string" ? item.id : createId(),
+        originalText: String(item.originalText),
+        editedText: String(item.editedText),
+        selectedSellingPoints: Array.isArray(item.selectedSellingPoints) ? item.selectedSellingPoints.filter(Boolean) : [],
+        selectedUseScenes: Array.isArray(item.selectedUseScenes) ? item.selectedUseScenes.filter(Boolean) : [],
+        creativityLevel: item.creativityLevel || "standard",
+        useMaterialStyle: Boolean(item.useMaterialStyle),
+        createdAt: item.createdAt || new Date().toISOString()
+      };
+    }
+
+    function getAvoidPhrasesFromFeedback(history) {
+      const counts = {};
+      const defaults = [...bannedMarketingPhrases, ...exaggeratedPhrases];
+      history.forEach(item => {
+        const original = String(item.originalText || "");
+        const edited = String(item.editedText || "");
+        [...defaults, ...weakGenericPhrases].forEach(phrase => {
+          if (original.includes(phrase) && !edited.includes(phrase)) {
+            counts[phrase] = (counts[phrase] || 0) + 1;
+          }
+        });
+        extractRemovedPhrases(original, edited).forEach(phrase => {
+          counts[phrase] = (counts[phrase] || 0) + 1;
+        });
+      });
+      const learned = Object.entries(counts)
+        .filter(([phrase, count]) => phrase.length >= 2 && (count >= 2 || [...defaults, ...weakGenericPhrases].includes(phrase)))
+        .sort((a, b) => b[1] - a[1])
+        .map(([phrase]) => phrase)
+        .slice(0, 30);
+      return uniqueList([...defaults, ...learned]);
+    }
+
+    function getPreferredPhrasesFromFeedback(history) {
+      const counts = {};
+      history.forEach(item => {
+        const original = String(item.originalText || "");
+        const edited = String(item.editedText || "");
+        preferredPhraseCandidates.forEach(phrase => {
+          if (edited.includes(phrase) && !original.includes(phrase)) {
+            counts[phrase] = (counts[phrase] || 0) + 1;
+          }
+        });
+        extractAddedPhrases(original, edited).forEach(phrase => {
+          counts[phrase] = (counts[phrase] || 0) + 1;
+        });
+      });
+      return Object.entries(counts)
+        .filter(([phrase, count]) => phrase.length >= 4 && count >= 1 && ![...bannedMarketingPhrases, ...exaggeratedPhrases].some(banned => phrase.includes(banned)))
+        .sort((a, b) => b[1] - a[1])
+        .map(([phrase]) => phrase)
+        .slice(0, 12);
+    }
+
+    function extractCommonDiffPhrases(history, type) {
+      const counts = {};
+      history.forEach(item => {
+        const original = String(item.originalText || "");
+        const edited = String(item.editedText || "");
+        const phrases = type === "added" ? extractAddedPhrases(original, edited) : extractRemovedPhrases(original, edited);
+        phrases.forEach(phrase => {
+          counts[phrase] = (counts[phrase] || 0) + 1;
+        });
+      });
+      return Object.entries(counts)
+        .filter(([phrase, count]) => phrase.length >= 4 && count >= 1)
+        .sort((a, b) => b[1] - a[1])
+        .map(([phrase]) => phrase);
+    }
+
+    function extractAddedPhrases(original, edited) {
+      return extractCandidatePhrases(edited).filter(phrase => !original.includes(phrase));
+    }
+
+    function extractRemovedPhrases(original, edited) {
+      return extractCandidatePhrases(original).filter(phrase => !edited.includes(phrase));
+    }
+
+    function extractCandidatePhrases(text) {
+      const candidates = String(text || "")
+        .split(/[，。！？、；;\n]/)
+        .map(phrase => phrase.trim())
+        .filter(phrase => phrase.length >= 4 && phrase.length <= 18);
+      const keywordHits = preferredPhraseCandidates.filter(phrase => text.includes(phrase));
+      return uniqueList([...candidates, ...keywordHits]).filter(phrase => !/^\d+$/.test(phrase));
+    }
+
+    function extractDetailKeywords(text) {
+      return concreteDetailKeywords.filter(keyword => String(text || "").includes(keyword));
+    }
+
+    function inferStructurePreference(commonPatterns, toneTypes) {
+      const preferences = [];
+      if (toneTypes.includes("回购分享型")) preferences.push(STRUCTURE_LABELS.E);
+      if (toneTypes.includes("对比体验型") || commonPatterns.includes("之前现在") || commonPatterns.includes("比之前")) preferences.push(STRUCTURE_LABELS.C);
+      if (toneTypes.includes("朋友推荐型") || toneTypes.includes("网络种草型")) preferences.push(STRUCTURE_LABELS.D);
+      if (toneTypes.includes("新机换购型")) preferences.push(STRUCTURE_LABELS.F);
+      if (commonPatterns.includes("买来放")) preferences.push(STRUCTURE_LABELS.B);
+      preferences.push(STRUCTURE_LABELS.A);
+      return uniqueList(preferences);
     }
 
     function analyzeEditFeedback() {
-      const feedback = loadArray(EDIT_FEEDBACK_KEY).slice(0, 100);
-      const avoidCounts = {};
-      const preferredCounts = {};
+      const feedback = loadEditFeedbackHistory().slice(0, 100);
+      const recent = feedback.slice(0, 20);
+      const avoidPhrases = getAvoidPhrasesFromFeedback(feedback);
+      const preferredPhrases = getPreferredPhrasesFromFeedback(feedback);
       let shorter = 0;
       let longer = 0;
       let addedDetail = 0;
       let removedDetail = 0;
-      feedback.forEach(item => {
-        const original = String(item.originalText || item.before || "");
-        const edited = String(item.editedText || item.after || "");
-        [...bannedMarketingPhrases, ...exaggeratedPhrases, "真的", "非常", "特别"].forEach(phrase => {
-          if (original.includes(phrase) && !edited.includes(phrase)) avoidCounts[phrase] = (avoidCounts[phrase] || 0) + 1;
+      const sceneCounts = {};
+      recent.forEach(item => {
+        const original = String(item.originalText || "");
+        const edited = String(item.editedText || "");
+        if (!original || !edited) return;
+        if (normalizeText(edited).length < normalizeText(original).length * 0.85) shorter += 1;
+        if (normalizeText(edited).length > normalizeText(original).length * 1.15) longer += 1;
+        const originalDetails = extractDetailKeywords(original);
+        const editedDetails = extractDetailKeywords(edited);
+        if (editedDetails.some(keyword => !originalDetails.includes(keyword))) addedDetail += 1;
+        if (originalDetails.some(keyword => !editedDetails.includes(keyword))) removedDetail += 1;
+        editedDetails.forEach(keyword => {
+          sceneCounts[keyword] = (sceneCounts[keyword] || 0) + 1;
         });
-        preferredPhraseCandidates.forEach(phrase => {
-          if (edited.includes(phrase)) preferredCounts[phrase] = (preferredCounts[phrase] || 0) + 1;
-        });
-        if (edited.length < original.length * 0.85) shorter += 1;
-        if (edited.length > original.length * 1.15) longer += 1;
-        if (hasConcreteDetail(edited) && !hasConcreteDetail(original)) addedDetail += 1;
-        if (hasConcreteDetail(original) && !hasConcreteDetail(edited)) removedDetail += 1;
       });
+      const commonUserAdditions = extractCommonDiffPhrases(feedback, "added").slice(0, 12);
+      const commonUserRemovals = extractCommonDiffPhrases(feedback, "removed").slice(0, 12);
+      const toneBias = avoidPhrases.some(phrase => [...bannedMarketingPhrases, ...exaggeratedPhrases, ...weakGenericPhrases].includes(phrase))
+        ? "lessExaggerated"
+        : "neutral";
       return {
-        avoidPhrases: uniqueList([...bannedMarketingPhrases, ...exaggeratedPhrases, ...Object.keys(avoidCounts)]),
-        preferredPhrases: Object.entries(preferredCounts).sort((a, b) => b[1] - a[1]).map(([phrase]) => phrase).slice(0, 8),
+        avoidPhrases,
+        preferredPhrases,
         lengthBias: shorter > longer + 1 ? "shorter" : longer > shorter + 1 ? "longer" : "neutral",
         detailBias: addedDetail > removedDetail + 1 ? "moreDetail" : removedDetail > addedDetail + 1 ? "lessDetail" : "neutral",
-        toneBias: Object.values(avoidCounts).reduce((sum, count) => sum + count, 0) >= 2 ? "lessExaggerated" : "neutral"
+        toneBias,
+        sceneBias: Object.entries(sceneCounts).sort((a, b) => b[1] - a[1]).map(([keyword]) => keyword).slice(0, 8),
+        commonUserAdditions,
+        commonUserRemovals,
+        preferredUsageCounts: {}
       };
     }
 
@@ -512,6 +730,12 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         pointSequence: [],
         sceneSequence: []
       };
+    }
+
+    function createStatsFromBatch(batch) {
+      const stats = createBatchStats();
+      batch.forEach(item => rememberBatchItem(stats, item));
+      return stats;
     }
 
     function passesBatchRules(item, stats, relaxed) {
@@ -531,6 +755,50 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       stats.sceneSequence.push(item.scene);
     }
 
+    function trackBatchDiversity(batch, stats = createBatchStats()) {
+      stats.structureCounts = countBy(batch, "structureKey");
+      stats.openerCounts = countBy(batch, "openerKey");
+      stats.endingCounts = countBy(batch, "endingKey");
+      stats.pointSequence = batch.map(item => item.point);
+      stats.sceneSequence = batch.map(item => item.scene);
+      return {
+        structureCount: Object.keys(stats.structureCounts).length,
+        openerCount: Object.keys(stats.openerCounts).length,
+        maxOpeningReuse: Math.max(0, ...Object.values(stats.openerCounts)),
+        maxEndingReuse: Math.max(0, ...Object.values(stats.endingCounts))
+      };
+    }
+
+    function isBatchTooRepetitive(batch, targetCount = 10) {
+      if (batch.length < Math.min(6, targetCount)) return false;
+      const diversity = trackBatchDiversity(batch);
+      const enoughStructures = batch.length >= targetCount ? diversity.structureCount >= Math.min(5, targetCount) : diversity.structureCount >= 3;
+      return !enoughStructures || diversity.openerCount < 3 || diversity.maxOpeningReuse > 2 || diversity.maxEndingReuse > 2;
+    }
+
+    function findMostRepetitiveIndex(batch) {
+      const openerCounts = countBy(batch, "openerKey");
+      const endingCounts = countBy(batch, "endingKey");
+      let worstIndex = batch.length - 1;
+      let worstScore = -1;
+      batch.forEach((item, index) => {
+        const score = (openerCounts[item.openerKey] || 0) + (endingCounts[item.endingKey] || 0) + (countBy(batch, "structureKey")[item.structureKey] || 0);
+        if (score > worstScore) {
+          worstScore = score;
+          worstIndex = index;
+        }
+      });
+      return worstIndex;
+    }
+
+    function countBy(list, key) {
+      return list.reduce((counts, item) => {
+        const value = item[key] || "";
+        if (value) counts[value] = (counts[value] || 0) + 1;
+        return counts;
+      }, {});
+    }
+
     function pickStructureKey(scene, point, styleProfile, stats) {
       const preferred = [];
       if (scene === "回购" || styleProfile.toneTypes.includes("回购分享型")) preferred.push("E");
@@ -538,7 +806,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (scene === "刚换手机" || styleProfile.toneTypes.includes("新机换购型")) preferred.push("F");
       if (/对比/.test(point) || styleProfile.oldProblemFirst) preferred.push("C");
       if (scene === "办公室用" || scene === "家里用") preferred.push("B");
-      const all = uniqueList([...preferred, "A", "B", "C", "D", "E", "F"]);
+      const styleKeys = (styleProfile.structurePreference || []).map(label => {
+        return Object.entries(STRUCTURE_LABELS).find(([, value]) => value === label)?.[0] || "";
+      }).filter(Boolean);
+      const all = uniqueList([...preferred, ...styleKeys, "A", "B", "C", "D", "E", "F"]);
       const underused = all.filter(key => (stats.structureCounts[key] || 0) < 2);
       return pick(underused.length ? underused : all);
     }
@@ -559,27 +830,37 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       return Math.random() < (creativity === "wild" ? 0.56 : creativity === "stable" ? 0.24 : 0.38);
     }
 
-    function validateGeneratedCopy(text, context) {
+    function validateGeneratedCopy(text, selectedSellingPoints = [], selectedUseScenes = [], context = {}) {
       if (!text || text.length < 20) return false;
-      if ([...bannedMarketingPhrases, ...exaggeratedPhrases].some(phrase => text.includes(phrase))) return false;
+      if ([...bannedMarketingPhrases, ...exaggeratedPhrases, ...(context.editPreference?.avoidPhrases || [])].some(phrase => text.includes(phrase))) return false;
       const sentences = text.split("。").map(item => item.trim()).filter(Boolean);
       if (new Set(sentences).size !== sentences.length) return false;
+      if (hasObviousStitching(text)) return false;
       if (hasRepeatedCore(text, ["温度", "发热", "烫"], 3)) return false;
       if (hasRepeatedCore(text, ["快", "补电", "充电速度"], 3)) return false;
-      if (context.scene === "办公室用" && /床头|睡前/.test(text)) return false;
-      if (context.scene === "家里用" && /工位|办公室/.test(text)) return false;
-      if (context.scene === "刚换手机" && /给家里人买/.test(text)) return false;
-      if (context.scene === "朋友推荐购买" && /种草|刷到/.test(text)) return false;
-      if (context.scene === "网络种草购买" && /朋友推荐|朋友说/.test(text)) return false;
-      if (context.scene === "回购" && !/回购|又买|之前买过|家里有一个/.test(text)) return false;
-      if (context.point === "对比旧充电器" && !/旧|之前|以前|换/.test(text)) return false;
-      if (context.point === "对比杂牌" && !/杂牌|便宜头|不放心|靠谱/.test(text)) return false;
-      if (context.point === "低温" && /完全不发热|一点都不烫/.test(text)) return false;
+      if (selectedUseScenes.includes("办公室用") && /床头|睡前|家里/.test(text)) return false;
+      if (selectedUseScenes.includes("家里用") && /工位|办公室|放办公室/.test(text)) return false;
+      if (selectedUseScenes.includes("刚换手机") && /给家里人买/.test(text)) return false;
+      if (selectedUseScenes.includes("朋友推荐购买") && /种草|刷到/.test(text)) return false;
+      if (selectedUseScenes.includes("网络种草购买") && /朋友推荐|朋友说|朋友用了/.test(text)) return false;
+      if (selectedUseScenes.includes("回购") && !/回购|又买|之前买过|家里有一个|第二个/.test(text)) return false;
+      if (!selectedUseScenes.includes("回购") && /回购|又买|之前买过/.test(text)) return false;
+      if (selectedSellingPoints.includes("对比旧充电器") && !/旧|之前|以前|换|比之前/.test(text)) return false;
+      if (selectedSellingPoints.includes("对比杂牌") && !/杂牌|便宜头|不放心|靠谱|不想太凑合/.test(text)) return false;
+      if (selectedSellingPoints.includes("低温") && /完全不发热|一点都不烫|永远不伤电池/.test(text)) return false;
       if (/搜索转化率|点击率|投放|广告口号/.test(text)) return false;
       const hasReason = /主要|之前|本来|因为|不想|怕|朋友|评价|回购|刚换/.test(text);
-      const hasScene = /办公室|工位|家里|床头|出门|中午|晚上|桌面|包里|新手机/.test(text) || context.scene;
+      const hasScene = /办公室|工位|家里|床头|出门|中午|晚上|桌面|包里|新手机|朋友|评价/.test(text) || selectedUseScenes.some(scene => text.includes(scene));
       const hasExperience = /用|充|温度|发热|舒服|安心|省心|踏实|方便|顺手/.test(text);
-      return Boolean(hasReason && hasScene && hasExperience);
+      const elementCount = [hasReason, hasScene, hasExperience].filter(Boolean).length;
+      return elementCount >= 2;
+    }
+
+    function hasObviousStitching(text) {
+      if (/，，|。。|，。|。着|主要是主要是/.test(text)) return true;
+      const clauses = text.split(/[，。]/).map(item => item.trim()).filter(Boolean);
+      if (clauses.some((clause, index) => index > 0 && clause === clauses[index - 1])) return true;
+      return clauses.some(clause => clause.length < 3 && /用|买|充/.test(clause));
     }
 
     function renderGenerated() {
@@ -629,19 +910,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function startGeneratedEdit(item) {
       item.editing = true;
       item.draft = item.content;
-      item.originalText = item.content;
+      if (!item.originalText) item.originalText = item.content;
       renderGenerated();
     }
 
     function saveGeneratedEdit(item, card) {
       const value = card.querySelector(".copy-editor").value.trim();
       if (!value) return showToast("请填写文案内容");
-      recordEditFeedback(item, value);
+      recordEditFeedback(item.originalText || item.content, value, item);
       item.content = value;
       item.lengthType = getLengthType(value);
       item.editing = false;
       item.draft = "";
-      item.originalText = "";
       renderGenerated();
       showToast("修改已保存");
     }
@@ -649,7 +929,6 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function cancelGeneratedEdit(item) {
       item.editing = false;
       item.draft = "";
-      item.originalText = "";
       renderGenerated();
     }
 
@@ -753,15 +1032,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       showToast("素材已更新");
     }
 
-    function recordEditFeedback(item, editedText) {
-      const originalText = item.originalText || item.content;
-      if (!originalText || originalText === editedText) return;
+    function recordEditFeedback(originalText, editedText, context = {}) {
+      const original = String(originalText || "").trim();
+      const edited = String(editedText || "").trim();
+      if (!original || !edited || original === edited) return;
       state.editFeedbackHistory.unshift({
-        originalText,
-        editedText,
-        selectedSellingPoints: item.selectedSellingPoints || [item.point].filter(Boolean),
-        selectedUseScenes: item.selectedUseScenes || [item.scene].filter(Boolean),
-        creativityLevel: item.creativityLevel || els.creativityLevel.value,
+        id: createId(),
+        originalText: original,
+        editedText: edited,
+        selectedSellingPoints: context.selectedSellingPoints || [context.point, context.secondPoint].filter(Boolean),
+        selectedUseScenes: context.selectedUseScenes || [context.scene].filter(Boolean),
+        creativityLevel: context.creativityLevel || els.creativityLevel.value,
+        useMaterialStyle: Boolean(context.useMaterialStyle ?? els.useMaterials.checked),
         createdAt: new Date().toISOString()
       });
       state.editFeedbackHistory = state.editFeedbackHistory.slice(0, 100);
@@ -844,6 +1126,12 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (context.point === "颜值") pointReasons.push("放桌面上的东西还是想选个看着顺眼的");
       const pool = [...(sceneReasons[context.scene] || customSceneLines(context.scene)), ...pointReasons, ...MODULES.reasons];
       if (context.styleProfile.reasonFirst) pool.push("主要是日常用得频繁，想选个省心一点的");
+      if (context.editPreference.detailBias === "moreDetail") {
+        pool.push("到手之后先试了几天，主要还是看日常用起来稳不稳");
+      }
+      if (context.editPreference.toneBias === "lessExaggerated") {
+        pool.push("对我来说，日常用着稳定比说得多好听更重要");
+      }
       return pickSmart(pool, context);
     }
 
@@ -859,6 +1147,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const pool = [...(sceneDetails[context.scene] || customSceneLines(context.scene)), ...MODULES.sceneDetails];
       if (context.styleProfile.detailDensity === "high" || context.editPreference.detailBias === "moreDetail") {
         pool.push("早上出门前临时充一会儿，也能缓一下电量焦虑", "包里放一个也不占地方");
+      }
+      if (context.editPreference.detailBias === "lessDetail") {
+        return pickSmart(sceneDetails[context.scene] || customSceneLines(context.scene), context);
       }
       return pickSmart(pool, context);
     }
@@ -897,8 +1188,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (context.scene === "回购") pool.push("后面应该还会继续回购");
       if (context.point === "低温") pool.push("至少不会一直担心发烫");
       if (context.creativity === "wild") pool.push("这种小配件每天都用，顺手其实挺重要", "换完之后才觉得固定位置多备一个很省事");
-      if (context.editPreference.preferredPhrases.length && Math.random() < 0.28) {
-        pool.push(...context.editPreference.preferredPhrases);
+      if (context.editPreference.toneBias === "lessExaggerated") {
+        pool.push("目前用下来挺省心", "对我来说这个体验已经够用了", "日常用完全够了");
       }
       return pickSmart(context.creativity === "stable" ? pool.slice(0, 8) : pool, context);
     }
@@ -947,34 +1238,44 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       return calculateTextSimilarity(a, b) > 0.58;
     }
 
-    function tokenPairs(text) {
-      return text.replace(/[，。！？、\s]/g, "").match(/.{1,2}/g) || [];
-    }
-
     function calculateTextSimilarity(a, b) {
-      const aTokens = textNgrams(a, 2);
-      const bTokens = textNgrams(b, 2);
+      const aTokens = textNgrams(a, 3);
+      const bTokens = textNgrams(b, 3);
       if (!aTokens.length || !bTokens.length) return 0;
       const bSet = new Set(bTokens);
       const overlap = aTokens.filter(token => bSet.has(token)).length;
       const union = new Set([...aTokens, ...bTokens]).size;
       const containment = overlap / Math.min(aTokens.length, bTokens.length);
       const jaccard = overlap / Math.max(union, 1);
-      return Math.max(containment, jaccard);
+      const charOverlap = calculateCharacterOverlap(a, b);
+      return Math.max(containment, jaccard, charOverlap * 0.82);
     }
 
     function isTooSimilarToMaterials(text, materials) {
       return materials.some(item => {
         const material = String(item.content || "");
         if (!material) return false;
-        if (text.slice(0, 12) === material.slice(0, 12)) return true;
-        if (hasSharedRun(text, material, 8)) return true;
-        return calculateTextSimilarity(text, material) > 0.6;
+        const normalizedText = normalizeText(text);
+        const normalizedMaterial = normalizeText(material);
+        if (!normalizedText || !normalizedMaterial) return false;
+        if (normalizedText.slice(0, 12) === normalizedMaterial.slice(0, 12)) return true;
+        if (hasLongCommonSubstring(text, material, 8)) return true;
+        if (calculateTextSimilarity(text, material) > 0.48) return true;
+        return calculateMaterialContainment(text, material) > 0.6;
       });
     }
 
-    function regenerateIfTooSimilar(text) {
-      return isTooSimilarToMaterials(text, state.materials);
+    function regenerateIfTooSimilar(text, materials, generatorFn) {
+      let next = text;
+      let attempts = 0;
+      while (isTooSimilarToMaterials(next, materials) && attempts < 20) {
+        attempts += 1;
+        next = generatorFn();
+      }
+      if (isTooSimilarToMaterials(next, materials)) {
+        return generatorFn({ ignoreMaterials: true });
+      }
+      return next;
     }
 
     function textNgrams(text, size) {
@@ -986,20 +1287,118 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       return result;
     }
 
-    function hasSharedRun(a, b, length) {
+    function hasLongCommonSubstring(a, b, minLength) {
       const source = String(a || "").replace(/[，。！？、\s]/g, "");
       const target = String(b || "").replace(/[，。！？、\s]/g, "");
-      if (source.length < length || target.length < length) return false;
-      for (let index = 0; index <= source.length - length; index += 1) {
-        if (target.includes(source.slice(index, index + length))) return true;
+      if (source.length < minLength || target.length < minLength) return false;
+      for (let index = 0; index <= source.length - minLength; index += 1) {
+        if (target.includes(source.slice(index, index + minLength))) return true;
       }
       return false;
     }
 
+    function calculateMaterialContainment(text, material) {
+      const source = normalizeText(text);
+      const target = normalizeText(material);
+      if (!source || !target) return 0;
+      let matched = 0;
+      for (let index = 0; index < source.length; index += 1) {
+        if (target.includes(source[index])) matched += 1;
+      }
+      return matched / Math.max(source.length, 1);
+    }
+
+    function calculateCharacterOverlap(a, b) {
+      const source = normalizeText(a);
+      const target = normalizeText(b);
+      if (!source || !target) return 0;
+      const targetCounts = {};
+      for (const char of target) targetCounts[char] = (targetCounts[char] || 0) + 1;
+      let overlap = 0;
+      for (const char of source) {
+        if (targetCounts[char] > 0) {
+          overlap += 1;
+          targetCounts[char] -= 1;
+        }
+      }
+      return overlap / Math.min(source.length, target.length);
+    }
+
+    function normalizeText(text) {
+      return String(text || "").replace(/[，。！？、\s,.!?;；：“”"'\-—（）()【】\[\]]/g, "");
+    }
+
     function pickSmart(list, context = {}) {
       const avoid = [...bannedMarketingPhrases, ...exaggeratedPhrases, ...(context.editPreference?.avoidPhrases || [])];
-      const filtered = list.filter(item => item && !avoid.some(phrase => String(item).includes(phrase)));
+      const filtered = list.filter(item => item && !avoid.some(phrase => String(item).includes(phrase)) && !hasContextConflict(String(item), context));
       return pick(filtered.length ? filtered : list);
+    }
+
+    function applyEditPreferences(text, preference = createNeutralEditPreference(), context = {}) {
+      let next = String(text || "");
+      const avoid = uniqueList([...bannedMarketingPhrases, ...exaggeratedPhrases, ...(preference.avoidPhrases || [])]);
+      avoid.forEach(phrase => {
+        if (phrase) next = next.replaceAll(phrase, "");
+      });
+      if (preference.toneBias === "lessExaggerated") {
+        next = next
+          .replaceAll("超级", "比较")
+          .replaceAll("特别", "比较")
+          .replaceAll("非常", "比较")
+          .replaceAll("真的", "")
+          .replaceAll("很快", "补电挺方便")
+          .replaceAll("很好看", "比较耐看")
+          .replaceAll("很不错", "还挺顺手");
+      }
+      if (preference.detailBias === "moreDetail" && context.lengthType !== "短" && Math.random() < 0.24) {
+        const detail = pickSmart(detailPhrasesForContext(context), context);
+        if (detail && !next.includes(detail)) next = appendSentence(next, detail);
+      }
+      if (preference.preferredPhrases?.length && Math.random() < 0.26) {
+        const phrase = pick(getAvailablePreferredPhrases(preference).filter(item => !next.includes(item)));
+        if (phrase && !hasContextConflict(phrase, context)) {
+          next = appendSentence(next, phrase);
+          preference.preferredUsageCounts[phrase] = (preference.preferredUsageCounts[phrase] || 0) + 1;
+        }
+      }
+      if (preference.lengthBias === "shorter") {
+        next = trimToLength(next, "中");
+      }
+      return sanitizeCopy(next, preference);
+    }
+
+    function getAvailablePreferredPhrases(preference) {
+      const counts = preference.preferredUsageCounts || {};
+      return (preference.preferredPhrases || []).filter(phrase => (counts[phrase] || 0) < 2);
+    }
+
+    function detailPhrasesForContext(context = {}) {
+      const sceneDetails = {
+        "办公室用": ["放在工位上刚好", "中午补电这个场景挺实用", "放办公室固定用更省事"],
+        "家里用": ["晚上放床头用比较顺手", "家里多备一个不用来回拔", "手机放桌边充也方便"],
+        "刚换手机": ["刚换新手机会更在意充电稳定", "给新手机用着会安心一点"],
+        "回购": ["这次多买一个就是为了固定位置用", "之前用着顺手才会再买"],
+        "朋友推荐购买": ["跟着朋友买回来试了几天", "朋友说好用我才认真看了下"],
+        "网络种草购买": ["看评价时主要留意温度和速度", "到手之后先试了日常补电"]
+      };
+      return sceneDetails[context.scene] || MODULES.sceneDetails;
+    }
+
+    function appendSentence(text, phrase) {
+      const clean = String(phrase || "").trim();
+      if (!clean) return text;
+      const base = String(text || "").replace(/[，。]*$/, "");
+      return `${base}。${/[。！？]$/.test(clean) ? clean : `${clean}。`}`;
+    }
+
+    function hasContextConflict(text, context = {}) {
+      const scene = context.scene || "";
+      if (scene === "办公室用" && /床头|睡前|家里/.test(text)) return true;
+      if (scene === "家里用" && /工位|办公室|放办公室/.test(text)) return true;
+      if (scene === "朋友推荐购买" && /种草|刷到/.test(text)) return true;
+      if (scene === "网络种草购买" && /朋友推荐|朋友说|朋友用了/.test(text)) return true;
+      if (scene === "刚换手机" && /给家里人/.test(text)) return true;
+      return false;
     }
 
     function sanitizeCopy(text, editPreference = {}) {
@@ -1011,9 +1410,6 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function maybeApplyEditPreference(parts, context) {
-      if (context.editPreference.preferredPhrases.length && Math.random() < 0.25) {
-        parts.ending = pickSmart([...context.editPreference.preferredPhrases, parts.ending], context);
-      }
       if (context.editPreference.detailBias === "moreDetail" && context.lengthType !== "短") {
         parts.scene = pickSmart([...MODULES.sceneDetails, parts.scene], context);
       }

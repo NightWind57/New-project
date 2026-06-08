@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/New-project/"
+  base: process.env.NETLIFY ? "/" : "/New-project/"
 });
