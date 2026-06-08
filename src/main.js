@@ -840,11 +840,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const sentences = text.split("。").map(item => item.trim()).filter(Boolean);
       if (new Set(sentences).size !== sentences.length) return false;
       if (hasObviousStitching(text)) return false;
+      if (hasUnselectedSellingPoint(text, selectedSellingPoints, selectedUseScenes)) return false;
+      if (hasUnselectedScene(text, selectedUseScenes)) return false;
+      if (!hasRequiredSceneSignal(text, selectedUseScenes)) return false;
       if (hasRepeatedCore(text, ["温度", "发热", "烫"], 3)) return false;
       if (hasRepeatedCore(text, ["快", "补电", "充电速度"], 3)) return false;
-      if (selectedUseScenes.includes("办公室用") && /床头|睡前|家里/.test(text)) return false;
-      if (selectedUseScenes.includes("家里用") && /工位|办公室|放办公室/.test(text)) return false;
-      if (selectedUseScenes.includes("刚换手机") && /给家里人买/.test(text)) return false;
+      if (selectedUseScenes.includes("办公室用") && /床头|睡前|家里|客厅|晚上放/.test(text)) return false;
+      if (selectedUseScenes.includes("家里用") && /工位|办公室|放办公室|公司|上班|午休/.test(text)) return false;
+      if (selectedUseScenes.includes("刚换手机") && /给家里人买|办公室|工位|公司|上班|午休|中午|出门前|包里|床头|家里|客厅|睡前|朋友推荐|朋友说|刷到|种草|回购|又买/.test(text)) return false;
       if (selectedUseScenes.includes("朋友推荐购买") && /种草|刷到/.test(text)) return false;
       if (selectedUseScenes.includes("网络种草购买") && /朋友推荐|朋友说|朋友用了/.test(text)) return false;
       if (selectedUseScenes.includes("回购") && !/回购|又买|之前买过|家里有一个|第二个/.test(text)) return false;
@@ -858,6 +861,46 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const hasExperience = /用|充|温度|发热|舒服|安心|省心|踏实|方便|顺手/.test(text);
       const elementCount = [hasReason, hasScene, hasExperience].filter(Boolean).length;
       return elementCount >= 2;
+    }
+
+    function hasUnselectedSellingPoint(text, selectedSellingPoints = [], selectedUseScenes = []) {
+      const selected = new Set(selectedSellingPoints);
+      const hasNewPhoneScene = selectedUseScenes.includes("刚换手机");
+      const rules = [
+        ["快充", /快充|补电快|速度快|速度比|充得快|充电速度|临时补电|补电挺方便|不用一直等着手机充电/],
+        ["低温", /低温|温度|发热|发烫|热感|烫|没那么容易热|温度稳/],
+        ["颜值", /颜值|颜色|外观|好看|耐看|质感|桌面搭配|放在桌面/],
+        ["对比杂牌", /杂牌|便宜头|便宜充电头|不放心|靠谱点的牌子|别太省/],
+        ["对比旧充电器", /旧充电器|旧头|旧款|以前那个|之前那个|用了很久|换完之后|比之前/]
+      ];
+
+      return rules.some(([point, pattern]) => {
+        if (selected.has(point)) return false;
+        if (point === "对比旧充电器" && hasNewPhoneScene && /旧头|旧充电头|之前那个旧头|不想继续用之前/.test(text)) return false;
+        return pattern.test(text);
+      });
+    }
+
+    function hasUnselectedScene(text, selectedUseScenes = []) {
+      const selected = new Set(selectedUseScenes);
+      const sceneRules = [
+        ["办公室用", /办公室|公司|工位|上班|午休|放工位/],
+        ["家里用", /家里|床头|客厅|睡前|晚上放|家里备用/],
+        ["朋友推荐购买", /朋友推荐|朋友说|朋友用了|跟着朋友/],
+        ["网络种草购买", /刷到|种草|看评价|网上看到|别人推荐/],
+        ["回购", /回购|又买|再买|第二个|之前买过/]
+      ];
+      return sceneRules.some(([scene, pattern]) => !selected.has(scene) && pattern.test(text));
+    }
+
+    function hasRequiredSceneSignal(text, selectedUseScenes = []) {
+      if (selectedUseScenes.includes("刚换手机") && !/刚换|新手机|手机刚换|旧头|旧充电头|配件/.test(text)) return false;
+      if (selectedUseScenes.includes("办公室用") && !/办公室|公司|工位|上班|午休|放工位/.test(text)) return false;
+      if (selectedUseScenes.includes("家里用") && !/家里|床头|客厅|睡前|晚上|家里备用/.test(text)) return false;
+      if (selectedUseScenes.includes("朋友推荐购买") && !/朋友推荐|朋友说|朋友用了|跟着朋友/.test(text)) return false;
+      if (selectedUseScenes.includes("网络种草购买") && !/刷到|种草|看评价|网上看到|别人推荐/.test(text)) return false;
+      if (selectedUseScenes.includes("回购") && !/回购|又买|再买|第二个|之前买过/.test(text)) return false;
+      return true;
     }
 
     function hasObviousStitching(text) {
@@ -1148,8 +1191,12 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "网络种草购买": ["到手之后先放桌边试了几天", "买回来用了几天，日常场景还挺合适", "看评价时比较在意温度，到手后也特意试了下"],
         "回购": ["这次主要放办公室用", "家里一个、办公室一个，用起来省事很多", "第二个打算固定放床头或者工位"]
       };
-      const pool = [...(sceneDetails[context.scene] || customSceneLines(context.scene)), ...MODULES.sceneDetails];
-      if (context.styleProfile.detailDensity === "high" || context.editPreference.detailBias === "moreDetail") {
+      const hasStrictScene = Boolean(sceneDetails[context.scene]);
+      const pool = [...(sceneDetails[context.scene] || customSceneLines(context.scene))];
+      if (!hasStrictScene) {
+        pool.push(...MODULES.sceneDetails);
+      }
+      if (!hasStrictScene && (context.styleProfile.detailDensity === "high" || context.editPreference.detailBias === "moreDetail")) {
         pool.push("早上出门前临时充一会儿，也能缓一下电量焦虑", "包里放一个也不占地方");
       }
       if (context.editPreference.detailBias === "lessDetail") {
@@ -1397,11 +1444,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function hasContextConflict(text, context = {}) {
       const scene = context.scene || "";
-      if (scene === "办公室用" && /床头|睡前|家里/.test(text)) return true;
-      if (scene === "家里用" && /工位|办公室|放办公室/.test(text)) return true;
+      if (scene === "办公室用" && /床头|睡前|家里|客厅|晚上放|朋友推荐|朋友说|刷到|种草|回购|又买|刚换|新手机/.test(text)) return true;
+      if (scene === "家里用" && /工位|办公室|放办公室|公司|上班|午休|朋友推荐|朋友说|刷到|种草|回购|又买|刚换|新手机/.test(text)) return true;
       if (scene === "朋友推荐购买" && /种草|刷到/.test(text)) return true;
       if (scene === "网络种草购买" && /朋友推荐|朋友说|朋友用了/.test(text)) return true;
-      if (scene === "刚换手机" && /给家里人/.test(text)) return true;
+      if (scene === "刚换手机" && /给家里人|办公室|工位|公司|上班|午休|中午|出门前|包里|家里|床头|客厅|睡前|朋友推荐|朋友说|朋友用了|刷到|种草|回购|又买|再买|第二个/.test(text)) return true;
       return false;
     }
 
@@ -1415,7 +1462,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function maybeApplyEditPreference(parts, context) {
       if (context.editPreference.detailBias === "moreDetail" && context.lengthType !== "短") {
-        parts.scene = pickSmart([...MODULES.sceneDetails, parts.scene], context);
+        parts.scene = pickSmart([...detailPhrasesForContext(context), parts.scene], context);
       }
     }
 
