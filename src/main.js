@@ -272,13 +272,17 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       setGeneratingState(true);
       try {
         const copies = await requestFunctionCopies(points, scenes, creativity);
-        state.generated = copies.map((content, index) => createFunctionGeneratedItem(content, points, scenes, creativity, index));
+        const remoteItems = copies.slice(0, 10).map((content, index) => createFunctionGeneratedItem(content, points, scenes, creativity, index));
+        const localTopUps = remoteItems.length < 10
+          ? generateDiverseCopies(10 - remoteItems.length, { points, scenes, creativity, useMaterials: els.useMaterials.checked })
+          : [];
+        state.generated = [...remoteItems, ...localTopUps].slice(0, 10);
         rememberHistory(state.generated.map(item => item.content));
         renderGenerated();
-        showToast(`已生成 ${state.generated.length} 条文案`);
+        showToast(remoteItems.length < 10 ? "AI 返回不足 10 条，已使用本地生成器补足" : `已生成 ${state.generated.length} 条文案`);
       } catch (error) {
         console.warn("generate-copy function unavailable:", error.message);
-        generateLocalBatch(points, scenes, creativity, { message: "AI 生成接口暂不可用，已使用本地生成器生成" });
+        generateLocalBatch(points, scenes, creativity, { message: "AI 生成失败，已使用本地生成器兜底" });
       } finally {
         setGeneratingState(false);
       }
@@ -309,8 +313,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const copies = Array.isArray(data?.copies)
         ? data.copies.map(item => typeof item === "string" ? item : item?.content).map(item => String(item || "").trim()).filter(Boolean)
         : [];
-      if (copies.length !== 10) throw new Error("Function response must contain 10 copies");
-      return copies;
+      if (!Array.isArray(data?.copies)) throw new Error("Function response must contain copies array");
+      return copies.slice(0, 10);
     }
 
     function generateLocalBatch(points, scenes, creativity, options = {}) {

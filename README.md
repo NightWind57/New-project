@@ -60,9 +60,9 @@ npm install
 OPENAI_API_KEY=你的OpenAIKey npx netlify dev
 ```
 
-然后访问 Netlify Dev 提供的本地地址。前端会请求 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI API。不要把 API Key 写进 `src/main.js`、`index.html` 或任何前端文件。
+然后访问 Netlify Dev 提供的本地地址。前端会请求 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI Responses API。不要把 API Key 写进 `src/main.js`、`index.html` 或任何前端文件。
 
-如果没有配置 `OPENAI_API_KEY`，或者 OpenAI API 调用失败，页面会提示“AI生成失败，已使用本地生成器生成”，并自动使用本地规则生成器兜底。
+如果没有配置 `OPENAI_API_KEY`，或者 OpenAI API 调用失败，页面会提示“AI 生成失败，已使用本地生成器兜底”，并自动使用本地规则生成器兜底。
 
 GitHub Pages 地址：
 
@@ -203,5 +203,9 @@ OPENAI_MODEL=gpt-4.1-mini
 
 - API Key 只能配置在 Netlify 环境变量里。
 - 不要把 API Key 写进前端代码、README 示例真实值或 GitHub 仓库。
+- 本地开发测试 Netlify Function 时，可以在本机临时设置 `OPENAI_API_KEY` 环境变量，或使用 Netlify Dev 读取本地环境变量；不要提交 `.env`。
+- AI 生成请求会先进入 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI Responses API。
+- 如果 AI 生成失败、接口返回异常或返回文案不足 10 条，前端会使用本地规则生成器兜底或补足。
 - 用户数据仍然保存在每个用户自己浏览器的 `localStorage` 中，不会上传到数据库。
-- 素材库内容会作为生成参考发送给 Netlify Function，用于生成当次文案；项目不保存服务端数据库。
+- 素材库内容会作为风格样本发送给 Netlify Function，用于学习说话方式、语气和细节密度；Function 会要求模型不要直接复制素材库原文。
+- 编辑反馈也会作为偏好样本发送给 Netlify Function，用于学习用户常删和常加的表达；项目不保存服务端数据库。
