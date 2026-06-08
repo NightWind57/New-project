@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-
 const bannedPhrases = [
   "闭眼入",
   "绝绝子",
@@ -124,8 +122,8 @@ export const handler = async event => {
     return jsonResponse(405, { error: "Only POST requests are allowed." });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return jsonResponse(500, { error: "Missing OPENAI_API_KEY" });
+  if (!process.env.GEMINI_API_KEY) {
+    return jsonResponse(500, { error: "Missing GEMINI_API_KEY" });
   }
 
   let payload = {};
@@ -149,31 +147,24 @@ export const handler = async event => {
   }
 
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const copies = await generateValidatedCopies(client, request);
+    const copies = await generateValidatedCopies(request);
     return jsonResponse(200, { copies });
   } catch (error) {
-    console.error("generate-copy OpenAI failed:", {
+    console.error("generate-copy Gemini failed:", {
       name: error?.name,
       message: error?.message,
       status: error?.status
     });
-    return jsonResponse(500, { error: "OpenAI generation failed" });
+    return jsonResponse(500, { error: "Gemini generation failed" });
   }
 };
 
-async function generateValidatedCopies(client, request) {
+async function generateValidatedCopies(request) {
   const accepted = [];
   const rejectionSummary = {};
   for (let attempt = 0; attempt < 3 && accepted.length < 10; attempt += 1) {
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      instructions: buildInstructions(),
-      input: buildPrompt(request, { attempt, acceptedCount: accepted.length, rejectionSummary }),
-      temperature: temperatureFor(request.creativityLevel, attempt),
-      max_output_tokens: 2800
-    });
-    const parsedCopies = parseCopies(response.output_text);
+    const responseText = await requestGeminiText(request, { attempt, acceptedCount: accepted.length, rejectionSummary });
+    const parsedCopies = parseCopies(responseText);
     const { accepted: nextAccepted, rejected } = filterCopies(parsedCopies, request, accepted);
     nextAccepted.forEach(item => accepted.push(item));
     rejected.forEach(reason => {
@@ -181,6 +172,48 @@ async function generateValidatedCopies(client, request) {
     });
   }
   return accepted.slice(0, 10);
+}
+
+async function requestGeminiText(request, retry) {
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: buildInstructions() }]
+      },
+      contents: [{
+        role: "user",
+        parts: [{ text: buildPrompt(request, retry) }]
+      }],
+      generationConfig: {
+        temperature: temperatureFor(request.creativityLevel, retry.attempt),
+        maxOutputTokens: 2800,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.error?.message || `Gemini returned ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map(part => part?.text || "")
+    .join("")
+    .trim();
+
+  if (!text) {
+    throw new Error("Gemini response did not contain text");
+  }
+
+  return text;
 }
 
 function buildInstructions() {

@@ -57,12 +57,12 @@ npm run build
 
 ```bash
 npm install
-OPENAI_API_KEY=你的OpenAIKey npx netlify dev
+GEMINI_API_KEY=你的GeminiAPIKey npx netlify dev
 ```
 
-然后访问 Netlify Dev 提供的本地地址。前端会请求 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI Responses API。不要把 API Key 写进 `src/main.js`、`index.html` 或任何前端文件。
+然后访问 Netlify Dev 提供的本地地址。前端会请求 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `GEMINI_API_KEY` 并调用 Gemini API。不要把 API Key 写进 `src/main.js`、`index.html` 或任何前端文件。
 
-如果没有配置 `OPENAI_API_KEY`，或者 OpenAI API 调用失败，页面会提示“AI 生成失败，已使用本地生成器兜底”，并自动使用本地规则生成器兜底。
+如果没有配置 `GEMINI_API_KEY`，或者 Gemini API 调用失败，页面会提示“AI 生成失败，已使用本地生成器兜底”，并自动使用本地规则生成器兜底。
 
 GitHub Pages 地址：
 
@@ -147,7 +147,7 @@ localStorage key：
 
 ## Netlify 部署买家秀文案生成器
 
-买家秀文案生成器也可以部署到 Netlify，并通过 Netlify Functions 调用 OpenAI API。
+买家秀文案生成器也可以部署到 Netlify，并通过 Netlify Functions 调用 Gemini API。
 
 Netlify 部署步骤：
 
@@ -183,28 +183,28 @@ publish = "dist"
 directory = "netlify/functions"
 ```
 
-配置 OpenAI API Key：
+配置 Gemini API Key：
 
 1. 在 Netlify 项目后台进入 Site configuration。
 2. 打开 Environment variables。
 3. 新增变量：
 
 ```text
-OPENAI_API_KEY=你的OpenAI API Key
+GEMINI_API_KEY=你的Gemini API Key
 ```
 
 可选变量：
 
 ```text
-OPENAI_MODEL=gpt-4.1-mini
+GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
 注意事项：
 
 - API Key 只能配置在 Netlify 环境变量里。
 - 不要把 API Key 写进前端代码、README 示例真实值或 GitHub 仓库。
-- 本地开发测试 Netlify Function 时，可以在本机临时设置 `OPENAI_API_KEY` 环境变量，或使用 Netlify Dev 读取本地环境变量；不要提交 `.env`。
-- AI 生成请求会先进入 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `OPENAI_API_KEY` 并调用 OpenAI Responses API。
+- 本地开发测试 Netlify Function 时，可以在本机临时设置 `GEMINI_API_KEY` 环境变量，或使用 Netlify Dev 读取本地环境变量；不要提交 `.env`。
+- AI 生成请求会先进入 `/.netlify/functions/generate-copy`，由 Netlify Function 在服务端读取 `GEMINI_API_KEY` 并调用 Gemini API。
 - 如果 AI 生成失败、接口返回异常或返回文案不足 10 条，前端会使用本地规则生成器兜底或补足。
 - 用户数据仍然保存在每个用户自己浏览器的 `localStorage` 中，不会上传到数据库。
 - 素材库内容会作为风格样本发送给 Netlify Function，用于学习说话方式、语气和细节密度；Function 会要求模型不要直接复制素材库原文。
