@@ -19,12 +19,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     const POINT_LINES = {
       "快充": [
-        "临时补电挺方便", "不用一直等着手机充电", "中午插上，下午用就安心很多",
-        "速度比之前旧头快不少", "日常通勤前补电够用了", "不是那种让人等很久的感觉"
+        "临时补电挺方便", "不用一直等着手机充电", "午休前插上，下午用会踏实些",
+        "速度比之前旧头快不少", "上班间隙补电够用了", "不是那种让人等很久的感觉",
+        "开会前临时充一会儿也能缓一下", "电脑旁边顺手插上，补电效率还可以"
       ],
       "低温": [
         "温度控制比之前那个稳", "没有以前那个那么容易热", "边回消息边充，发热感没那么明显",
-        "摸起来不会让人有明显不舒服的热感", "晚上充电时会更放心一点", "对我来说，温度稳比单纯快更重要"
+        "摸起来不会让人有明显不舒服的热感", "长时间插着也不会让人太担心", "对我来说，温度稳比单纯快更重要",
+        "办公时边用边充，热感比原来轻一些", "温度表现比较克制，用着会安心点"
       ],
       "颜值": [
         "颜色比图片里更耐看", "放在桌面上不突兀", "粉色不是那种很廉价的粉",
@@ -46,7 +48,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "手机刚换新的，配件也想换个稳一点的"
       ],
       "办公室用": [
-        "买来放办公室备用", "办公室一直缺一个固定充电器", "放在工位左手边刚好"
+        "买来放办公室备用", "工位上正好缺一个固定充电器", "放在工位左手边刚好",
+        "主要是上班时不想再临时找充电头", "公司里固定放一个会省事很多",
+        "平时在办公室用手机比较频繁，想备一个稳定点的"
       ],
       "家里用": [
         "晚上放床头用，不用每天拔来拔去", "家里只有一个充电头，每次拿来拿去挺麻烦",
@@ -77,7 +81,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "本来只是想多备一个，后来觉得固定位置放着确实方便", "旧的还能用，但体验已经有点跟不上"
       ],
       sceneDetails: [
-        "放在工位上刚好", "平时中午吃饭前插上，回来能补不少电",
+        "放在工位上刚好", "午休前插上，回来电量能缓不少",
         "晚上放床头用，不用每天拔来拔去", "手机放桌边充，线长也够用",
         "早上出门前临时充一会儿，也能缓一下电量焦虑", "包里放一个也不占地方",
         "家里一个、办公室一个，用起来省事很多", "给家里人用的话，还是这种省心一点",
@@ -1956,7 +1960,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function pickReason(context) {
       const sceneReasons = {
         "刚换手机": ["刚换了新手机，就不太想继续用之前那个旧头了", "手机刚换新的，配件也想换个稳一点的"],
-        "办公室用": ["办公室一直缺一个固定充电器", "主要是不想每天把充电器带来带去"],
+        "办公室用": [
+          "工位上正好缺一个固定充电器",
+          "主要是不想每天把充电器带来带去",
+          "上班时手机用得多，想在公司固定备一个",
+          "之前总是借同事的充电头，用起来不太方便",
+          "办公室里有个固定充电位置会省心很多",
+          "平时开会和回消息比较多，电量掉得也快"
+        ],
         "家里用": ["家里只有一个充电头，每次拿来拿去挺麻烦", "床头想多放一个，晚上用起来方便点"],
         "朋友推荐购买": [
           "朋友之前买过，说日常用着比较稳",
@@ -1988,7 +1999,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function pickSceneDetail(context) {
       const sceneDetails = {
         "刚换手机": ["新手机到手之后用了几天", "给新手机用，还是想稳一点", "手机刚换新，充电头也不想继续凑合"],
-        "办公室用": ["放在工位左手边刚好", "平时中午吃饭前插上，回来能补不少电", "放办公室固定用，省得来回带"],
+        "办公室用": [
+          "放在工位左手边刚好",
+          "午休前插上，回来电量能缓不少",
+          "放办公室固定用，省得来回带",
+          "电脑旁边留着一个位置，随手就能插",
+          "上午用到一半电量低了，直接在工位补一下",
+          "不用每次从包里翻充电头，确实方便点"
+        ],
         "家里用": ["晚上放床头用，不用每天拔来拔去", "手机放桌边充，线长也够用", "家里多备一个，随手就能充"],
         "朋友推荐购买": [
           "到手后先按平时习惯用了几天",
@@ -2096,7 +2114,19 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const aSentences = a.split("。").filter(Boolean);
       const bSentences = b.split("。").filter(Boolean);
       if (aSentences.some(sentence => sentence.length > 10 && bSentences.includes(sentence))) return true;
-      return calculateTextSimilarity(a, b) > 0.58;
+      const aClauses = splitComparableClauses(a);
+      const bClauses = splitComparableClauses(b);
+      const repeatedClauses = aClauses.filter(clause => bClauses.includes(clause));
+      if (repeatedClauses.some(clause => clause.length >= 12)) return true;
+      if (repeatedClauses.filter(clause => clause.length >= 7).length >= 2) return true;
+      return calculateTextSimilarity(a, b) > 0.52;
+    }
+
+    function splitComparableClauses(text) {
+      return String(text || "")
+        .split(/[，。！？、；;]/)
+        .map(item => normalizeText(item))
+        .filter(item => item.length >= 6);
     }
 
     function calculateTextSimilarity(a, b) {
@@ -2194,7 +2224,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const filtered = list.filter(item => item && !avoid.some(phrase => String(item).includes(phrase)) && !hasContextConflict(String(item), context));
       const phraseCounts = context.stats?.phraseCounts || {};
       const fresh = filtered.filter(item => !phraseCounts[normalizeText(item)]);
-      return pick(fresh.length ? fresh : filtered.length ? filtered : list);
+      const selected = pick(fresh.length ? fresh : filtered.length ? filtered : list);
+      if (context.stats && selected) {
+        rememberPhraseCounts(context.stats, selected);
+      }
+      return selected;
     }
 
     function applyEditPreferences(text, preference = createNeutralEditPreference(), context = {}) {
@@ -2237,7 +2271,13 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function detailPhrasesForContext(context = {}) {
       const sceneDetails = {
-        "办公室用": ["放在工位上刚好", "中午补电这个场景挺实用", "放办公室固定用更省事"],
+        "办公室用": [
+          "放在工位上刚好",
+          "午休前补电这个场景挺实用",
+          "放办公室固定用更省事",
+          "电脑旁边随手能插",
+          "不用每天从包里拿来拿去"
+        ],
         "家里用": ["晚上放床头用比较顺手", "家里多备一个不用来回拔", "手机放桌边充也方便"],
         "刚换手机": ["刚换新手机会更在意充电稳定", "给新手机用着会安心一点"],
         "回购": ["这次多买一个就是为了固定位置用", "之前用着顺手才会再买"],
