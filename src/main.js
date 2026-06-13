@@ -53,8 +53,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "家里多备一个，随手就能充"
       ],
       "朋友推荐购买": [
-        "朋友用了之后说还行，我才跟着买的", "是朋友推荐的，用了几天感觉确实可以",
-        "本来没太在意，朋友说这个温度控制不错才买的"
+        "朋友之前买过，说日常用着比较稳", "听朋友说这个用起来还算省心",
+        "本来没太在意，是朋友用过之后推荐的", "身边朋友先买了一个，我才跟着看了下",
+        "不是自己刷到的，主要是朋友实际用过才推荐"
       ],
       "网络种草购买": [
         "之前刷到别人推荐才注意到这个", "看了几条评价，感觉这个比较符合我的需求",
@@ -71,7 +72,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "之前那个用了挺久，感觉也该换了", "主要是不想再用杂牌头给手机充电",
         "手机刚换新的，配件也想换个稳一点的", "办公室一直缺一个固定充电器",
         "家里只有一个充电头，每次拿来拿去挺麻烦", "之前充电时温度有点明显，所以想换个低温一点的",
-        "看了几条评价，感觉这个比较符合我的需求", "朋友用了之后说还行，我才跟着买的",
+        "看了几条评价，感觉这个比较符合我的需求", "朋友用过之后反馈还可以，我才认真看了下",
         "之前买过一个，用着顺手，所以又买了", "主要是每天都要用，想换个稳定一点的",
         "本来只是想多备一个，后来觉得固定位置放着确实方便", "旧的还能用，但体验已经有点跟不上"
       ],
@@ -84,7 +85,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       ],
       endings: [
         "目前用下来挺省心", "日常用完全够了", "整体比之前舒服不少",
-        "给苹果手机用着也放心", "后面应该还会继续回购", "不算特别便宜，但用着踏实",
+        "给苹果手机用着也放心", "不算特别便宜，但用着踏实",
         "至少不会一直担心发烫", "每天都要用的东西，稳一点更重要",
         "对我来说这个体验已经够用了", "买套装确实省了不少事",
         "小东西不算复杂，但用顺手之后确实省事", "目前没有什么需要吐槽的地方"
@@ -1116,6 +1117,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         structureCounts: {},
         openerCounts: {},
         endingCounts: {},
+        phraseCounts: {},
         pointSequence: [],
         sceneSequence: []
       };
@@ -1140,6 +1142,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       stats.structureCounts[item.structureKey] = (stats.structureCounts[item.structureKey] || 0) + 1;
       stats.openerCounts[item.openerKey] = (stats.openerCounts[item.openerKey] || 0) + 1;
       stats.endingCounts[item.endingKey] = (stats.endingCounts[item.endingKey] || 0) + 1;
+      rememberPhraseCounts(stats, item.content);
       stats.pointSequence.push(item.point);
       stats.sceneSequence.push(item.scene);
     }
@@ -1148,6 +1151,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       stats.structureCounts = countBy(batch, "structureKey");
       stats.openerCounts = countBy(batch, "openerKey");
       stats.endingCounts = countBy(batch, "endingKey");
+      stats.phraseCounts = {};
+      batch.forEach(item => rememberPhraseCounts(stats, item.content));
       stats.pointSequence = batch.map(item => item.point);
       stats.sceneSequence = batch.map(item => item.scene);
       return {
@@ -1186,6 +1191,16 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         if (value) counts[value] = (counts[value] || 0) + 1;
         return counts;
       }, {});
+    }
+
+    function rememberPhraseCounts(stats, text) {
+      String(text || "")
+        .split(/[，。！？]/)
+        .map(item => normalizeText(item))
+        .filter(item => item.length >= 8)
+        .forEach(item => {
+          stats.phraseCounts[item] = (stats.phraseCounts[item] || 0) + 1;
+        });
     }
 
     function pickStructureKey(scene, point, styleProfile, stats) {
@@ -1943,7 +1958,13 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "刚换手机": ["刚换了新手机，就不太想继续用之前那个旧头了", "手机刚换新的，配件也想换个稳一点的"],
         "办公室用": ["办公室一直缺一个固定充电器", "主要是不想每天把充电器带来带去"],
         "家里用": ["家里只有一个充电头，每次拿来拿去挺麻烦", "床头想多放一个，晚上用起来方便点"],
-        "朋友推荐购买": ["朋友用了之后说还行，我才跟着买的", "朋友推荐之后看了下，感觉挺符合日常需求"],
+        "朋友推荐购买": [
+          "朋友之前买过，说日常用着比较稳",
+          "听朋友说这个温度控制还可以，才认真看了一下",
+          "朋友用过后反馈还行，我才跟着买来试试",
+          "朋友推荐之后看了下，感觉挺符合日常需求",
+          "身边朋友先用过，我买的时候会放心一点"
+        ],
         "网络种草购买": ["看了几条评价，感觉这个比较符合我的需求", "之前刷到别人推荐才注意到这个"],
         "回购": ["之前买过一个，用着顺手，所以又买了", "家里有一个，这次又回购放到另一个地方"]
       };
@@ -1969,7 +1990,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "刚换手机": ["新手机到手之后用了几天", "给新手机用，还是想稳一点", "手机刚换新，充电头也不想继续凑合"],
         "办公室用": ["放在工位左手边刚好", "平时中午吃饭前插上，回来能补不少电", "放办公室固定用，省得来回带"],
         "家里用": ["晚上放床头用，不用每天拔来拔去", "手机放桌边充，线长也够用", "家里多备一个，随手就能充"],
-        "朋友推荐购买": ["到手之后用了几天", "跟着朋友买回来试了下", "用了几天感觉和朋友说的差不多"],
+        "朋友推荐购买": [
+          "到手后先按平时习惯用了几天",
+          "跟着朋友买回来试了下",
+          "用了几天，整体和朋友反馈差不多",
+          "朋友说主要是温度稳，我自己也特意留意了",
+          "不是冲着参数买的，主要看朋友实际用过",
+          "边回消息边充时，也没有明显不舒服的热感"
+        ],
         "网络种草购买": ["到手之后先放桌边试了几天", "买回来用了几天，日常场景还挺合适", "看评价时比较在意温度，到手后也特意试了下"],
         "回购": ["这次主要放办公室用", "家里一个、办公室一个，用起来省事很多", "第二个打算固定放床头或者工位"]
       };
@@ -2164,7 +2192,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function pickSmart(list, context = {}) {
       const avoid = [...bannedMarketingPhrases, ...exaggeratedPhrases, ...(context.editPreference?.avoidPhrases || [])];
       const filtered = list.filter(item => item && !avoid.some(phrase => String(item).includes(phrase)) && !hasContextConflict(String(item), context));
-      return pick(filtered.length ? filtered : list);
+      const phraseCounts = context.stats?.phraseCounts || {};
+      const fresh = filtered.filter(item => !phraseCounts[normalizeText(item)]);
+      return pick(fresh.length ? fresh : filtered.length ? filtered : list);
     }
 
     function applyEditPreferences(text, preference = createNeutralEditPreference(), context = {}) {

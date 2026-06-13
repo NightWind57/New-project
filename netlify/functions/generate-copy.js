@@ -434,7 +434,7 @@ function parseCopies(text) {
   const parsed = safeJsonParse(text) || safeJsonParse(extractJson(text));
   const rawCopies = Array.isArray(parsed?.copies) ? parsed.copies : [];
   return rawCopies
-    .map(item => normalizeCopyItem(item))
+    .map((item, index) => normalizeCopyItem(item, index))
     .filter(item => item.content);
 }
 
@@ -599,10 +599,10 @@ function detectStructureRepetition(plans) {
   return Object.values(counts).some(count => count > 3);
 }
 
-function normalizeCopyItem(item) {
+function normalizeCopyItem(item, index = 0) {
   if (typeof item === "string") {
     return {
-      planId: 0,
+      planId: index + 1,
       content: item.trim(),
       usedSellingPoints: [],
       usedScene: "",
@@ -611,7 +611,7 @@ function normalizeCopyItem(item) {
     };
   }
   return {
-    planId: Number(item?.planId) || 0,
+    planId: Number(item?.planId) || index + 1,
     content: String(item?.content || "").trim(),
     usedSellingPoints: cleanList(item?.usedSellingPoints).slice(0, 2),
     usedScene: String(item?.usedScene || "").trim(),
@@ -633,10 +633,6 @@ function filterCopies(copies, request, existing = [], usedPlanIds = new Set()) {
   const rejected = [];
   const usedPlans = new Set();
   copies.forEach(item => {
-    if (!item.planId) {
-      rejected.push("missing_plan_id");
-      return;
-    }
     if (item.planId && (usedPlanIds.has(item.planId) || usedPlans.has(item.planId))) {
       rejected.push("reused_plan");
       return;
