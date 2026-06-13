@@ -66,8 +66,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "被种草之后买来试试"
       ],
       "回购": [
-        "之前买过一个，用着顺手，所以又买了", "家里有一个，这次买来放办公室",
-        "用了一段时间觉得不错，又买了一个备用"
+        "之前买过一个，用着顺手，所以又买了", "上次用着还挺稳，这次再补一个",
+        "用了一段时间觉得不错，又买了一个备用", "之前那只没什么问题，所以这次继续买同款",
+        "已经用过一个，日常表现稳定才会再买"
       ]
     };
 
@@ -747,68 +748,281 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const editPreference = analyzeEditFeedback();
       const generated = [];
       const stats = createBatchStats();
-      let attempts = 0;
-      while (generated.length < count && attempts < 360) {
-        attempts += 1;
-        const relaxed = attempts > 180;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats, materialPool, useMaterialStyle: options.useMaterials });
-        if (
-          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
-          passesBatchRules(item, stats, relaxed) &&
-          !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
-          !isTooSimilarToAny(item.content, state.history) &&
-          !isTooSimilarToMaterials(item.content, materialPool)
-        ) {
+      const plans = createLocalWritingPlans(count, { points, scenes, creativity, styleProfile });
+      plans.forEach(plan => {
+        const item = createGeneratedItemFromPlan(plan, { creativity, editPreference, stats, materialPool, useMaterialStyle: options.useMaterials });
+        if (acceptGeneratedItem(item, generated, stats, materialPool, false)) {
           generated.push(item);
           rememberBatchItem(stats, item);
         }
-      }
-      while ((generated.length < count || isBatchTooRepetitive(generated, count)) && attempts < 620) {
-        attempts += 1;
-        const localStats = isBatchTooRepetitive(generated, count) ? createStatsFromBatch(generated) : stats;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile, editPreference, stats: localStats, materialPool, useMaterialStyle: options.useMaterials });
-        if (
-          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
-          passesBatchRules(item, localStats, attempts > 520) &&
-          !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
-          !isTooSimilarToMaterials(item.content, materialPool)
-        ) {
-          generated.push(item);
-          rememberBatchItem(stats, item);
-          trackBatchDiversity(generated, stats);
+      });
+      plans.forEach(plan => {
+        let variant = 1;
+        while (generated.length < count && variant <= 4) {
+          const item = createGeneratedItemFromPlan({ ...plan, variant }, { creativity, editPreference, stats, materialPool: [], useMaterialStyle: false });
+          if (acceptGeneratedItem(item, generated, stats, [], variant < 3)) {
+            generated.push(item);
+            rememberBatchItem(stats, item);
+            break;
+          }
+          variant += 1;
         }
-        if (generated.length > count) generated.splice(findMostRepetitiveIndex(generated), 1);
-      }
-      let fallbackAttempts = 0;
-      const fallbackStyleProfile = createDefaultStyleProfile();
-      while (generated.length < count && fallbackAttempts < 240) {
-        fallbackAttempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile: fallbackStyleProfile, editPreference, stats, materialPool: [], useMaterialStyle: false });
-        if (
-          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
-          !generated.some(existing => existing.content === item.content) &&
-          !isTooSimilarToAny(item.content, generated.map(existing => existing.content)) &&
-          !isTooSimilarToMaterials(item.content, materialPool)
-        ) {
-          generated.push(item);
-          rememberBatchItem(stats, item);
-        }
-      }
-      let hardFallbackAttempts = 0;
-      while (generated.length < count && hardFallbackAttempts < 240) {
-        hardFallbackAttempts += 1;
-        const item = createGeneratedItem(points, scenes, creativity, { styleProfile: fallbackStyleProfile, editPreference, stats, materialPool: [], useMaterialStyle: false });
-        item.content = sanitizeCopy(`${item.content.replace(/。$/, "")}，${pick(MODULES.endings)}。`, editPreference);
-        if (
-          !generated.some(existing => existing.content === item.content) &&
-          validateGeneratedCopy(item.content, [item.point, item.secondPoint].filter(Boolean), [item.scene], item) &&
-          !isTooSimilarToMaterials(item.content, materialPool)
-        ) {
-          generated.push(item);
-          rememberBatchItem(stats, item);
-        }
-      }
+      });
+      forceFillGeneratedCopies(generated, count, { points, scenes, creativity, stats, editPreference, plans });
       return generated.slice(0, count);
+    }
+
+    function acceptGeneratedItem(item, generated, stats, materialPool, relaxed) {
+      const selectedPoints = [item.point, item.secondPoint].filter(Boolean);
+      const selectedScenes = [item.scene].filter(Boolean);
+      if (!validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)) return false;
+      if (!relaxed && !passesBatchRules(item, stats, false)) return false;
+      if (generated.some(existing => existing.content === item.content)) return false;
+      if (!relaxed && isTooSimilarToAny(item.content, generated.map(existing => existing.content))) return false;
+      if (!relaxed && isTooSimilarToAny(item.content, state.history)) return false;
+      if (materialPool.length && isTooSimilarToMaterials(item.content, materialPool)) return false;
+      return true;
+    }
+
+    function createLocalWritingPlans(count, context) {
+      const structures = ["reason-scene-experience", "scene-problem-solution", "problem-change-feeling", "source-reason-experience", "experience-summary", "reason-detail-feeling"];
+      const openingTypes = ["购买原因", "使用场景", "旧问题", "到手体验", "真实感受", "轻微对比"];
+      const endingTypes = ["省心", "够用", "踏实", "不夸张", "继续观察", "顺手"];
+      const targetLengths = context.creativity === "stable"
+        ? ["短", "短", "中", "中"]
+        : context.creativity === "wild"
+          ? ["中", "中", "长", "长"]
+          : ["短", "中", "中", "长"];
+      const plans = [];
+      const usedAnchors = new Set();
+      let cursor = 0;
+      while (plans.length < count && cursor < count * 8) {
+        const point = context.points[cursor % Math.max(context.points.length, 1)] || "";
+        const scene = context.scenes[(cursor + plans.length) % Math.max(context.scenes.length, 1)] || "";
+        const anchors = getDetailAnchorsForCondition(point, scene);
+        const anchor = anchors.find(item => !usedAnchors.has(`${scene}:${item}`)) || anchors[cursor % anchors.length] || scene || point;
+        usedAnchors.add(`${scene}:${anchor}`);
+        plans.push({
+          id: plans.length + 1,
+          point,
+          secondPoint: shouldUseSecondPoint(context.points, context.creativity) && cursor % 3 === 0 ? pick(context.points.filter(item => item !== point)) : "",
+          scene,
+          narrativeStructure: structures[(cursor + plans.length) % structures.length],
+          openingType: openingTypes[(cursor * 2 + plans.length) % openingTypes.length],
+          detailAnchor: anchor,
+          sellingPointExpression: cursor % 3 === 0 ? "对比体现" : cursor % 3 === 1 ? "间接体验" : "直接描述",
+          endingType: endingTypes[(cursor + plans.length * 2) % endingTypes.length],
+          targetLength: targetLengths[cursor % targetLengths.length],
+          storyLevel: context.creativity === "wild" ? "轻度" : "低",
+          variant: 0
+        });
+        cursor += 1;
+      }
+      return plans;
+    }
+
+    function getDetailAnchorsForCondition(point, scene) {
+      const sceneAnchors = {
+        "刚换手机": ["新手机刚到手", "旧头不想继续用", "配件一起换稳点", "日常充电更留意", "刚换机后的安心感", "旧充电头备用"],
+        "办公室用": ["工位固定备用", "午休前补电", "电脑旁随手插", "开会前临时补电", "不用从包里翻", "上班消息多"],
+        "家里用": ["床头固定用", "客厅随手充", "晚上睡前充", "家里多备一个", "不用来回拔", "家人偶尔也用"],
+        "朋友推荐购买": ["朋友先买过", "听朋友反馈", "跟着朋友试用", "朋友提醒温度", "朋友实际用过", "到手后对照体验"],
+        "网络种草购买": ["刷到推荐", "看评价后下单", "到手验证评价", "网上反馈温度", "被种草后试用", "评价里提到的细节"],
+        "回购": ["之前买过", "上次用着稳", "再补一个备用", "继续买同款", "前一个还在用", "用顺手后复购"]
+      };
+      const pointAnchors = {
+        "快充": ["临时补电", "不用久等", "短时间补电", "通勤前充一会儿", "午休补电", "旧头速度慢"],
+        "低温": ["温度更稳", "热感没那么明显", "边用边充", "长时间插着", "旧头发热明显", "用着安心"],
+        "颜值": ["颜色耐看", "桌面不突兀", "外观干净", "质感协调", "放着顺眼", "小巧不占地方"],
+        "对比杂牌": ["便宜头不放心", "杂牌发热", "换靠谱品牌", "每天用不想省", "新手机不凑合", "用着踏实"],
+        "对比旧充电器": ["旧头用了很久", "旧头跟不上", "之前充得慢", "换后更顺手", "旧充电器备用", "体验差距明显"]
+      };
+      return uniqueList([...(sceneAnchors[scene] || [scene]), ...(pointAnchors[point] || [point])]).filter(Boolean);
+    }
+
+    function createGeneratedItemFromPlan(plan, context) {
+      const content = applyEditPreferences(
+        sanitizeCopy(buildCopyFromPlan(plan, context), context.editPreference),
+        context.editPreference,
+        { ...context, point: plan.point, secondPoint: plan.secondPoint, scene: plan.scene, lengthType: plan.targetLength }
+      );
+      return {
+        id: createId(),
+        content,
+        point: plan.point,
+        secondPoint: plan.secondPoint || "",
+        scene: plan.scene,
+        lengthType: getLengthType(content),
+        structureKey: plan.narrativeStructure,
+        openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
+        endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
+        selectedSellingPoints: [plan.point, plan.secondPoint].filter(Boolean),
+        selectedUseScenes: [plan.scene].filter(Boolean),
+        creativityLevel: context.creativity,
+        useMaterialStyle: Boolean(context.useMaterialStyle),
+        editing: false,
+        draft: "",
+        originalText: content
+      };
+    }
+
+    function buildCopyFromPlan(plan, context) {
+      const pools = getConditionPools(plan.point, plan.scene, plan);
+      const variant = plan.variant || 0;
+      const parts = {
+        reason: pickByIndex(pools.reasons, plan.id + variant),
+        scene: pickByIndex(pools.scenes, plan.id + variant + 1),
+        problem: pickByIndex(pools.problems, plan.id + variant + 2),
+        experience: pickByIndex(pools.experiences, plan.id + variant + 3),
+        ending: pickByIndex(pools.endings, plan.id + variant + 4)
+      };
+      const orders = {
+        "reason-scene-experience": ["reason", "scene", "experience", "ending"],
+        "scene-problem-solution": ["scene", "problem", "experience", "ending"],
+        "problem-change-feeling": ["problem", "experience", "scene", "ending"],
+        "source-reason-experience": ["reason", "experience", "scene", "ending"],
+        "experience-summary": ["scene", "experience", "ending"],
+        "reason-detail-feeling": ["reason", "scene", "ending"]
+      };
+      const order = orders[plan.narrativeStructure] || orders["reason-scene-experience"];
+      const maxParts = plan.targetLength === "短" ? 3 : plan.targetLength === "中" ? 4 : 5;
+      return trimToLength(compactText(order.map(key => parts[key]).filter(Boolean).slice(0, maxParts)), plan.targetLength);
+    }
+
+    function getConditionPools(point, scene, plan = {}) {
+      const genericEndings = {
+        "省心": ["目前用下来挺省心", "这种每天都要用的东西，省心一点更重要"],
+        "够用": ["日常用完全够了", "对我来说这个体验已经够用了"],
+        "踏实": ["用着会踏实一点", "给苹果手机用着也比较放心"],
+        "不夸张": ["没有说得很夸张，但实际用着比较稳", "不是特别夸张的感觉，胜在日常顺手"],
+        "继续观察": ["目前先这样用着，暂时没有什么要吐槽的", "用了几天还算稳定，后面再继续看"],
+        "顺手": ["小东西不复杂，用顺手就挺重要", "整体用下来比继续凑合舒服一些"]
+      };
+      const scenePools = {
+        "刚换手机": {
+          reasons: ["刚换新手机后，配件也想换个稳一点的", "新手机到手之后，就不太想继续用旧头了", "刚换手机会更在意日常充电稳不稳", "旧充电头还能用，但给新手机用总觉得有点凑合"],
+          scenes: ["新手机平时用得多，充电头也想跟上", "刚换机这几天用得比较频繁", "给新手机用，还是想稳一点", "换机之后对充电体验会更留意"],
+          problems: ["之前那个旧头用了挺久，边用边充时体验一般", "旧头继续用也不是不行，但心里总觉得不太踏实", "原来的充电头有点跟不上现在的使用节奏", "刚换手机后不太想继续混着用旧配件"]
+        },
+        "办公室用": {
+          reasons: ["工位上正好缺一个固定充电器", "上班时手机用得多，想在公司固定备一个", "之前总要临时找充电头，用起来不太方便", "主要是不想每天把充电器带来带去", "办公室里有个固定充电位置会省心很多"],
+          scenes: ["放在工位旁边，随手就能插", "午休前补一下电，下午用着会踏实些", "电脑旁边留着一个位置，日常用起来顺手", "上午用到一半电量低了，直接在工位补一下", "不用每次从包里翻充电头，确实方便点"],
+          problems: ["原来临时借充电头挺麻烦", "以前只有一只充电头，经常忘了带", "工位上没有固定的，手机低电量时会有点焦虑", "之前边回消息边充，旧头热感比较明显"]
+        },
+        "家里用": {
+          reasons: ["家里充电头不太够用，想多备一个", "晚上经常要充电，想换个用着省心的", "家里常用位置缺一个顺手的充电头", "之前总要来回拔插，时间久了挺麻烦"],
+          scenes: ["晚上放在床头用，伸手就能插", "放在客厅常用位置，家里人偶尔也能用", "睡前给手机补电，用着顺手就行", "固定放家里，不用每天拿来拿去"],
+          problems: ["原来家里只有一个充电头，经常不够用", "之前那只用久了，充电时热感有点明显", "晚上临时找充电头挺麻烦", "旧头继续用也能用，但体验一般"]
+        },
+        "朋友推荐购买": {
+          reasons: ["朋友之前买过，说日常用着比较稳", "听朋友说体验还可以，我才跟着买来试试", "朋友实际用过后推荐，我买的时候会放心一点", "本来没太在意，是朋友用过之后提了一句", "朋友说主要是稳定，我才认真看了下"],
+          scenes: ["到手后按平时习惯用了几天", "用了几天，整体和朋友反馈差不多", "不是冲着参数买的，主要看朋友实际用过", "朋友说的点我自己也特意留意了一下", "跟着朋友买回来试了下，日常用着还算顺手"],
+          problems: ["之前自己买这类配件总有点拿不准", "原来的充电头用着有点热，所以朋友推荐后就想试试", "本来还在纠结，朋友用过之后说可以才下单", "之前那个继续用也行，但朋友说这个更稳一点"]
+        },
+        "网络种草购买": {
+          reasons: ["看了几条评价后，感觉比较符合日常需求", "之前刷到别人推荐，才认真看了下", "网上评价里比较多人提到日常使用感，我就买来试试", "被种草之后没有马上买，又看了几条反馈"],
+          scenes: ["到手后先按日常习惯试了几天", "买回来主要看实际使用稳不稳", "用了几天后，感觉评价里说的点基本能对上", "实际用的时候，我更留意温度和顺手程度"],
+          problems: ["之前怕这类推荐写得太夸张", "原来的充电头有点跟不上，所以看到评价后才想换", "看评价时比较担心会不会发热明显", "买之前主要纠结实际体验会不会和评价差太多"]
+        },
+        "回购": {
+          reasons: ["之前买过一个，用着顺手，所以又买了", "上次用下来没什么问题，这次继续买同款", "不是第一次买了，主要是之前用着比较踏实", "前一个用了有段时间，整体体验稳定，所以再买", "已经用过一个，日常表现还可以才回购"],
+          scenes: ["这次主要是多备一个，省得临时找不到", "前一个还在用，这次算是补一个常用备用", "用过之后再买，心里会更有底", "这类每天都要用的小东西，用顺手了就不太想换", "再买一个主要是图省心，不想重新试别的"],
+          problems: ["之前用别的充电头时总有点不稳定", "前一个用久了也没出什么问题，所以没再换别的", "之前边用边充时会留意温度，这个表现还算稳", "重新挑别的也麻烦，还是买用过的更放心"]
+        }
+      };
+      const pointPools = {
+        "低温": ["温度表现比较克制，用着会安心点", "边用边充时，发热感没有之前那么明显", "温度比原来那个稳一些", "对我来说，温度稳比说得多夸张更重要", "长时间插着也不会让人太担心", "热感控制得比较自然，不会让人一直惦记"],
+        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度比旧头更合适日常节奏", "着急出门前充一会儿也能缓一下", "午休或者开会前补电都比较顺手"],
+        "颜值": ["外观看着比较干净，放着不突兀", "颜色和日常桌面放一起还算协调", "质感比想象中耐看", "小小一个放着不占地方", "不是很抢眼，但看着舒服"],
+        "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省", "杂牌头充电时热感更明显，这个会稳一些", "给手机用的东西，还是别太凑合"],
+        "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点", "旧充电器继续备用，这个日常用更合适", "换完之后才觉得体验差距还挺明显"]
+      };
+      const selectedScenePool = scenePools[scene] || { reasons: customSceneLines(scene), scenes: customSceneLines(scene), problems: ["之前用着总有点不顺手"] };
+      return {
+        reasons: selectedScenePool.reasons,
+        scenes: selectedScenePool.scenes,
+        problems: selectedScenePool.problems,
+        experiences: pointPools[point] || [`${point}这点用下来比较符合预期`, `主要看中${point}，日常用着还算顺手`],
+        endings: genericEndings[plan.endingType] || genericEndings["省心"]
+      };
+    }
+
+    function forceFillGeneratedCopies(generated, count, context) {
+      let index = 0;
+      while (generated.length < count && index < 120) {
+        const point = context.points[index % Math.max(context.points.length, 1)] || "";
+        const scene = context.scenes[(generated.length + index) % Math.max(context.scenes.length, 1)] || "";
+        const content = sanitizeCopy(buildGuaranteedCopy(point, scene, generated.length + index), context.editPreference);
+        const item = createFilledGeneratedItem(content, point, scene, context.creativity);
+        const isDuplicate = generated.some(existing => existing.content === content);
+        const tooClose = generated.length < 6
+          ? isTooSimilarToAny(content, generated.map(existing => existing.content))
+          : generated.some(existing => normalizeText(existing.content).slice(0, 14) === normalizeText(content).slice(0, 14));
+        if (!isDuplicate && !tooClose && validateGeneratedCopy(content, [point].filter(Boolean), [scene].filter(Boolean), item)) {
+          generated.push(item);
+          rememberBatchItem(context.stats, item);
+        }
+        index += 1;
+      }
+    }
+
+    function createFilledGeneratedItem(content, point, scene, creativity) {
+      return {
+        id: createId(),
+        content,
+        point,
+        secondPoint: "",
+        scene,
+        lengthType: getLengthType(content),
+        structureKey: "filled",
+        openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
+        endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
+        selectedSellingPoints: [point].filter(Boolean),
+        selectedUseScenes: [scene].filter(Boolean),
+        creativityLevel: creativity,
+        useMaterialStyle: Boolean(els.useMaterials.checked),
+        editing: false,
+        draft: "",
+        originalText: content
+      };
+    }
+
+    function buildGuaranteedCopy(point, scene, index) {
+      const reasons = {
+        "刚换手机": ["刚换新手机后，配件也想换个稳一点的", "新手机到手之后，就不太想继续用旧头了", "刚换手机会更在意日常充电稳不稳"],
+        "办公室用": ["工位上正好缺一个固定充电器", "上班时手机用得多，想固定备一个", "之前总要临时找充电头，确实不方便", "办公室里多一个固定充电头会省事些"],
+        "家里用": ["家里充电头不太够用，想多备一个", "晚上经常要充电，想换个用着省心的", "家里常用位置缺一个顺手的充电头"],
+        "朋友推荐购买": ["朋友之前买过，说日常用着比较稳", "听朋友说体验还可以，我才跟着买来试试", "朋友实际用过后推荐，我买的时候会放心一点"],
+        "网络种草购买": ["看了几条评价后，感觉比较符合日常需求", "之前刷到别人推荐，才认真看了下", "网上评价里比较多人提到日常使用感，我就买来试试"],
+        "回购": ["之前买过一个，用着顺手，所以又买了", "上次用下来没什么问题，这次继续买同款", "之前那只一直在用，感觉稳定才会再补一个", "已经用过一个，日常表现还可以才回购", "不是第一次买了，主要是之前用着比较踏实", "前一个用了有段时间，整体体验稳定，所以再买"]
+      };
+      const details = {
+        "刚换手机": ["给新手机用，还是想稳一点", "新手机平时用得多，充电头也不想太凑合", "换机之后对发热和稳定性会更留意"],
+        "办公室用": ["放在工位旁边，随手就能插", "午休前补一下电，下午用着会踏实些", "不用每天从包里拿来拿去，确实方便点", "电脑旁边留着一个位置，日常用起来顺手"],
+        "家里用": ["晚上充电时用着比较顺手", "放在常用位置，不用来回拔插", "平时家里人偶尔也会用，稳定一点更省心"],
+        "朋友推荐购买": ["到手后按平时习惯用了几天", "朋友说的主要是稳定，我自己也特意留意了", "用了几天，整体和朋友反馈差不多"],
+        "网络种草购买": ["到手后先按日常习惯试了几天", "买回来主要看实际使用稳不稳", "用了几天后，感觉评价里说的点基本能对上"],
+        "回购": ["这次主要是多备一个，省得临时找不到", "多一个备用，日常用起来会从容一点", "前一个还在用，这次算是补一个常用备用", "用过之后再买，心里会更有底", "这类每天都要用的小东西，用顺手了就不太想换", "再买一个主要是图省心，不想重新试别的"]
+      };
+      const pointLines = {
+        "低温": ["温度表现比较克制，用着会安心点", "边用边充时，发热感没有之前那么明显", "温度比原来那个稳一些", "对我来说，温度稳比说得多夸张更重要", "长时间插着也不会让人太担心"],
+        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度比旧头更合适日常节奏", "着急出门前充一会儿也能缓一下"],
+        "颜值": ["外观看着比较干净，放着不突兀", "颜色和日常桌面放一起还算协调", "质感比想象中耐看"],
+        "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省"],
+        "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点"]
+      };
+      const endings = ["目前用下来挺省心", "日常用完全够了", "整体体验比较稳", "对我来说这个体验已经够用了", "每天都要用的东西，稳一点更重要", "不算特别复杂，但用着顺手"];
+      return compactText([
+        pickByIndex(reasons[scene] || customSceneLines(scene), index),
+        pickByIndex(details[scene] || customSceneLines(scene), index + 1),
+        pickByIndex(pointLines[point] || [`${point}这点用下来比较符合预期`], index + 2),
+        pickByIndex(endings, index + 3)
+      ]);
+    }
+
+    function pickByIndex(list, index) {
+      const values = list.filter(Boolean);
+      return values[index % values.length] || "";
     }
 
     function createGeneratedItem(points, scenes, creativity, context) {
@@ -1977,7 +2191,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "身边朋友先用过，我买的时候会放心一点"
         ],
         "网络种草购买": ["看了几条评价，感觉这个比较符合我的需求", "之前刷到别人推荐才注意到这个"],
-        "回购": ["之前买过一个，用着顺手，所以又买了", "家里有一个，这次又回购放到另一个地方"]
+        "回购": [
+          "之前买过一个，用着顺手，所以又买了",
+          "上次用下来没什么问题，这次继续买同款",
+          "之前那只一直在用，感觉稳定才会再补一个",
+          "已经用过一个，日常表现还可以才回购",
+          "不是第一次买了，主要是之前用着比较踏实",
+          "前一个用了有段时间，整体体验稳定，所以再买"
+        ]
       };
       const pointReasons = [];
       if (context.point === "低温") pointReasons.push("之前充电时温度有点明显，所以想换个低温一点的");
@@ -2017,7 +2238,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "边回消息边充时，也没有明显不舒服的热感"
         ],
         "网络种草购买": ["到手之后先放桌边试了几天", "买回来用了几天，日常场景还挺合适", "看评价时比较在意温度，到手后也特意试了下"],
-        "回购": ["这次主要放办公室用", "家里一个、办公室一个，用起来省事很多", "第二个打算固定放床头或者工位"]
+        "回购": [
+          "这次主要是多备一个，省得临时找不到",
+          "多一个备用，日常用起来会从容一点",
+          "前一个还在用，这次算是补一个常用备用",
+          "用过之后再买，心里会更有底",
+          "这类每天都要用的小东西，用顺手了就不太想换",
+          "再买一个主要是图省心，不想重新试别的"
+        ]
       };
       const hasStrictScene = Boolean(sceneDetails[context.scene]);
       const pool = [...(sceneDetails[context.scene] || customSceneLines(context.scene))];
