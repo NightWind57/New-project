@@ -7,6 +7,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     const SCENE_OPTIONS_KEY = "useSceneOptions";
     const HISTORY_KEY = "generationHistory";
     const EDIT_FEEDBACK_KEY = "editFeedbackHistory";
+    const STYLE_PROFILE_KEY = "buyerShowStyleProfile";
+    const MANUAL_PREFERENCES_KEY = "buyerShowManualPreferences";
+    const RECENT_FINGERPRINTS_KEY = "recentGeneratedFingerprints";
+    const MATERIAL_ANALYSIS_VERSION = 1;
+    const STYLE_PROFILE_VERSION = 1;
 
     const BASE_POINTS = ["快充", "低温", "颜值", "对比杂牌", "对比旧充电器"];
     const BASE_SCENES = ["刚换手机", "办公室用", "家里用", "朋友推荐购买", "网络种草购买", "回购"];
@@ -120,13 +125,61 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "朋友推荐", "到手", "用了几天", "中午", "出门前", "放包里", "桌面", "新手机"
     ];
 
+    const EMPTY_MATERIAL_STYLE_ANALYSIS = {
+      purchaseTrigger: "",
+      narrativeStructure: "",
+      tone: "",
+      lengthType: "",
+      detailDensity: "",
+      openingType: "",
+      endingType: "",
+      sellingPointExpression: "",
+      sceneSpecificity: "",
+      contrastType: "",
+      adIntensity: "",
+      storyLevel: "",
+      styleSummary: ""
+    };
+
+    const EMPTY_MANUAL_PREFERENCES = {
+      version: 1,
+      updatedAt: "",
+      tone: [],
+      preferredStructures: [],
+      preferredOpeningTypes: [],
+      preferredEndingTypes: [],
+      preferredLengthType: "",
+      preferredDetailDensity: "",
+      preferredSellingPointExpression: "",
+      preferredSceneSpecificity: "",
+      preferredStoryLevel: "",
+      avoidStyles: [],
+      customInstructions: ""
+    };
+
+    const PREFERENCE_OPTIONS = {
+      tone: ["克制自然", "轻松口语", "真实生活感", "简洁直接", "轻度故事感", "理性客观"],
+      length: ["短", "中等", "长", "跟随创意强度"],
+      detailDensity: ["低", "中", "高", "自动判断"],
+      sellingPointExpression: ["直接描述", "间接体验表达", "通过对比体现", "混合使用"],
+      sceneSpecificity: ["一般", "具体", "非常具体"],
+      storyLevel: ["不要故事感", "轻度故事感", "明显故事感"],
+      openingTypes: ["购买原因", "使用场景", "到货经历", "旧款对比", "直接体验", "回购原因", "换新机背景"],
+      endingTypes: ["安心感", "省心感", "日常够用", "对比总结", "回购意愿", "无明显总结"],
+      avoidStyles: ["广告化口号", "空泛夸张", "网络热词", "官方介绍感", "参数堆叠", "强推销感", "句式重复", "场景过度编造", "情绪过度用力"]
+    };
+
     const state = {
       pointOptions: [],
       sceneOptions: [],
       materials: [],
       generated: [],
       history: [],
-      editFeedbackHistory: []
+      editFeedbackHistory: [],
+      styleProfile: null,
+      manualPreferences: null,
+      effectiveStylePreferences: null,
+      preferenceEditing: false
     };
 
     const els = {
@@ -144,6 +197,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       resultList: document.getElementById("resultList"),
       openMaterialModalBtn: document.getElementById("openMaterialModalBtn"),
       clearMaterialsBtn: document.getElementById("clearMaterialsBtn"),
+      openPreferencePanelBtn: document.getElementById("openPreferencePanelBtn"),
+      preferenceModal: document.getElementById("preferenceModal"),
+      closePreferenceModalBtn: document.getElementById("closePreferenceModalBtn"),
+      preferenceStatusText: document.getElementById("preferenceStatusText"),
+      preferenceView: document.getElementById("preferenceView"),
+      editPreferenceBtn: document.getElementById("editPreferenceBtn"),
+      rebuildStyleProfileBtn: document.getElementById("rebuildStyleProfileBtn"),
+      resetManualPreferenceBtn: document.getElementById("resetManualPreferenceBtn"),
       materialList: document.getElementById("materialList"),
       materialModal: document.getElementById("materialModal"),
       closeMaterialModalBtn: document.getElementById("closeMaterialModalBtn"),
@@ -156,13 +217,17 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function init() {
       state.pointOptions = loadOptionList(SELLING_OPTIONS_KEY, BASE_POINTS, CUSTOM_POINTS_KEY);
       state.sceneOptions = loadOptionList(SCENE_OPTIONS_KEY, BASE_SCENES, CUSTOM_SCENES_KEY);
-      state.materials = loadMaterials();
+      state.materials = migrateBuyerShowMaterials();
       state.history = loadArray(HISTORY_KEY);
       state.editFeedbackHistory = loadEditFeedbackHistory();
+      state.styleProfile = loadStyleProfile();
+      state.manualPreferences = loadManualPreferences();
+      state.effectiveStylePreferences = mergeStylePreferences(state.styleProfile, state.manualPreferences);
       saveArray(SELLING_OPTIONS_KEY, state.pointOptions);
       saveArray(SCENE_OPTIONS_KEY, state.sceneOptions);
       saveArray(EDIT_FEEDBACK_KEY, state.editFeedbackHistory);
       saveMaterials();
+      refreshStyleProfileIfNeeded();
       renderOptionGroups();
       renderMaterials();
       bindEvents();
@@ -173,12 +238,20 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       els.addSellingPointBtn.addEventListener("click", addCustomPoint);
       els.addSceneBtn.addEventListener("click", addCustomScene);
       els.openMaterialModalBtn.addEventListener("click", openMaterialModal);
+      els.openPreferencePanelBtn.addEventListener("click", openPreferencePanel);
+      els.closePreferenceModalBtn.addEventListener("click", closePreferencePanel);
+      els.editPreferenceBtn.addEventListener("click", handlePreferenceEditAction);
+      els.rebuildStyleProfileBtn.addEventListener("click", rebuildStyleProfileFromMaterials);
+      els.resetManualPreferenceBtn.addEventListener("click", resetManualPreferences);
       els.closeMaterialModalBtn.addEventListener("click", closeMaterialModal);
       els.cancelMaterialBtn.addEventListener("click", closeMaterialModal);
       els.saveMaterialBtn.addEventListener("click", saveMaterialFromModal);
       els.clearMaterialsBtn.addEventListener("click", clearMaterials);
       els.materialModal.addEventListener("click", event => {
         if (event.target === els.materialModal) closeMaterialModal();
+      });
+      els.preferenceModal.addEventListener("click", event => {
+        if (event.target === els.preferenceModal) closePreferencePanel();
       });
     }
 
@@ -278,6 +351,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           : [];
         state.generated = [...remoteItems, ...localTopUps].slice(0, 10);
         rememberHistory(state.generated.map(item => item.content));
+        rememberGeneratedFingerprints(remoteItems.map(item => item.content));
         renderGenerated();
         showToast(remoteItems.length < 10 ? "AI 返回不足 10 条，已使用本地生成器补足" : `已生成 ${state.generated.length} 条文案`);
       } catch (error) {
@@ -294,6 +368,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     async function requestFunctionCopies(points, scenes, creativity) {
+      const useMaterialStyle = Boolean(els.useMaterials.checked);
+      const representativeMaterials = useMaterialStyle ? selectRepresentativeMaterials(state.materials, 5) : [];
+      syncEffectiveStylePreferences();
       const response = await fetch("/.netlify/functions/generate-copy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -301,10 +378,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           sellingPoints: points,
           useScenes: scenes,
           creativityLevel: creativity,
-          useMaterialStyle: Boolean(els.useMaterials.checked),
-          materials: state.materials
-            .map(({ content, createdAt }) => ({ content, createdAt }))
-            .slice(0, 30),
+          useMaterialStyle,
+          styleProfile: useMaterialStyle ? state.styleProfile : null,
+          manualPreferences: useMaterialStyle ? state.manualPreferences : createEmptyManualPreferences(),
+          effectiveStylePreferences: useMaterialStyle ? state.effectiveStylePreferences : null,
+          representativeMaterials,
+          materialsForSimilarity: state.materials
+            .map(({ content }) => ({ content }))
+            .slice(0, 100),
+          recentGeneratedFingerprints: loadRecentGeneratedFingerprints(),
           editFeedbackHistory: loadEditFeedbackHistory().slice(0, 20)
         })
       });
@@ -315,6 +397,309 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         : [];
       if (!Array.isArray(data?.copies)) throw new Error("Function response must contain copies array");
       return copies.slice(0, 10);
+    }
+
+    function selectRepresentativeMaterials(materials, count = 5) {
+      const completed = materials
+        .map(normalizeMaterial)
+        .filter(item => item.analysisStatus === "completed" && item.content)
+        .sort((a, b) => getRepresentativeScore(b) - getRepresentativeScore(a));
+      const selected = [];
+      const usedStructures = new Set();
+      const usedOpenings = new Set();
+      const usedTriggers = new Set();
+
+      completed.forEach(item => {
+        if (selected.length >= count) return;
+        const style = normalizeMaterialStyleAnalysis(item.styleAnalysis);
+        const hasNewStyleSignal = !usedStructures.has(style.narrativeStructure)
+          || !usedOpenings.has(style.openingType)
+          || !usedTriggers.has(style.purchaseTrigger);
+        if (!hasNewStyleSignal && selected.length >= Math.max(2, Math.floor(count / 2))) return;
+        if (selected.some(existing => isTooSimilarText(item.content, existing.content, 0.48))) return;
+        selected.push(createRepresentativeMaterialPayload(item));
+        if (style.narrativeStructure) usedStructures.add(style.narrativeStructure);
+        if (style.openingType) usedOpenings.add(style.openingType);
+        if (style.purchaseTrigger) usedTriggers.add(style.purchaseTrigger);
+      });
+
+      if (selected.length < count) {
+        completed.forEach(item => {
+          if (selected.length >= count) return;
+          if (selected.some(existing => existing.content === item.content || isTooSimilarText(item.content, existing.content, 0.58))) return;
+          selected.push(createRepresentativeMaterialPayload(item));
+        });
+      }
+
+      return selected.slice(0, count);
+    }
+
+    function openPreferencePanel() {
+      state.preferenceEditing = false;
+      syncEffectiveStylePreferences();
+      renderPreferencePanel();
+      els.preferenceModal.classList.add("open");
+    }
+
+    function closePreferencePanel() {
+      els.preferenceModal.classList.remove("open");
+      state.preferenceEditing = false;
+    }
+
+    function startPreferenceEdit() {
+      state.preferenceEditing = true;
+      renderPreferencePanel();
+    }
+
+    function handlePreferenceEditAction() {
+      if (state.preferenceEditing) {
+        savePreferenceEdit();
+      } else {
+        startPreferenceEdit();
+      }
+    }
+
+    function renderPreferencePanel() {
+      syncEffectiveStylePreferences();
+      const completedCount = getCompletedMaterialCount();
+      els.preferenceStatusText.textContent = `${getProfileStatusLabel(completedCount)} · 当前画像基于 ${completedCount} 条优秀素材生成`;
+      els.editPreferenceBtn.textContent = state.preferenceEditing ? "保存偏好" : "编辑偏好";
+      els.preferenceView.innerHTML = "";
+      els.preferenceView.appendChild(state.preferenceEditing ? createPreferenceEditView() : createPreferenceReadView());
+    }
+
+    function createPreferenceReadView() {
+      const wrapper = document.createElement("div");
+      const completedCount = getCompletedMaterialCount();
+      if (!completedCount) {
+        wrapper.appendChild(createPreferenceMessage("暂无可分析的优秀案例，请先将满意的文案加入素材库。"));
+        appendPreferenceDebug(wrapper);
+        return wrapper;
+      }
+      if (completedCount < 3) {
+        wrapper.appendChild(createPreferenceMessage("当前优秀案例较少，风格画像还不稳定。建议继续将真正满意的文案加入素材库。"));
+      }
+
+      const summary = document.createElement("div");
+      summary.className = "preference-summary";
+      summary.textContent = state.effectiveStylePreferences.profileSummary || state.styleProfile?.profileSummary || "偏好仍不明显，继续积累素材后会更稳定。";
+      wrapper.appendChild(summary);
+
+      const grid = document.createElement("div");
+      grid.className = "preference-grid";
+      grid.append(
+        createPreferenceSection("偏好语气", getToneDisplayLabels(state.styleProfile?.tonePreferences, state.manualPreferences?.tone).slice(0, 3), "自动画像与人工设置合并展示。"),
+        createPreferenceSection("偏好叙事结构", state.effectiveStylePreferences.preferredStructures, "", true),
+        createPreferenceSection("偏好开头方式", state.effectiveStylePreferences.preferredOpeningTypes),
+        createPreferenceSection("偏好结尾方式", state.effectiveStylePreferences.preferredEndingTypes),
+        createPreferenceSection("长度与细节", [
+          state.effectiveStylePreferences.preferredLengthType ? `长度：${state.effectiveStylePreferences.preferredLengthType}` : "",
+          state.effectiveStylePreferences.preferredDetailDensity ? `细节：${state.effectiveStylePreferences.preferredDetailDensity}` : ""
+        ].filter(Boolean), detailDensityExplanation(state.effectiveStylePreferences.preferredDetailDensity)),
+        createPreferenceSection("卖点表达", [state.effectiveStylePreferences.preferredSellingPointExpression].filter(Boolean), sellingPointExpressionExplanation(state.effectiveStylePreferences.preferredSellingPointExpression)),
+        createPreferenceSection("场景具体程度", [state.effectiveStylePreferences.preferredSceneSpecificity].filter(Boolean)),
+        createPreferenceSection("故事感", [state.effectiveStylePreferences.preferredStoryLevel].filter(Boolean)),
+        createPreferenceSection("不喜欢的风格", state.effectiveStylePreferences.avoidStyles, "", true)
+      );
+      wrapper.appendChild(grid);
+      if (state.effectiveStylePreferences.customInstructions) {
+        wrapper.appendChild(createPreferenceSection("补充要求", [state.effectiveStylePreferences.customInstructions], "", true));
+      }
+      appendPreferenceDebug(wrapper);
+      return wrapper;
+    }
+
+    function createPreferenceEditView() {
+      const form = document.createElement("div");
+      form.className = "preference-edit-grid";
+      const prefs = normalizeManualPreferences(state.manualPreferences);
+      form.append(
+        createPreferenceChoiceField("语气偏好", "tone", PREFERENCE_OPTIONS.tone, prefs.tone, true),
+        createPreferenceChoiceField("长度偏好", "preferredLengthType", PREFERENCE_OPTIONS.length, prefs.preferredLengthType, false),
+        createPreferenceChoiceField("细节密度", "preferredDetailDensity", PREFERENCE_OPTIONS.detailDensity, prefs.preferredDetailDensity, false),
+        createPreferenceChoiceField("卖点表达方式", "preferredSellingPointExpression", PREFERENCE_OPTIONS.sellingPointExpression, prefs.preferredSellingPointExpression, false),
+        createPreferenceChoiceField("场景具体程度", "preferredSceneSpecificity", PREFERENCE_OPTIONS.sceneSpecificity, prefs.preferredSceneSpecificity, false),
+        createPreferenceChoiceField("故事感", "preferredStoryLevel", PREFERENCE_OPTIONS.storyLevel, prefs.preferredStoryLevel, false),
+        createPreferenceChoiceField("喜欢的开头方式", "preferredOpeningTypes", PREFERENCE_OPTIONS.openingTypes, prefs.preferredOpeningTypes, true),
+        createPreferenceChoiceField("喜欢的结尾方式", "preferredEndingTypes", PREFERENCE_OPTIONS.endingTypes, prefs.preferredEndingTypes, true),
+        createPreferenceChoiceField("不喜欢的风格", "avoidStyles", PREFERENCE_OPTIONS.avoidStyles, prefs.avoidStyles, true),
+        createCustomInstructionField(prefs.customInstructions)
+      );
+      return form;
+    }
+
+    function createPreferenceChoiceField(title, name, options, selectedValue, multiple) {
+      const field = document.createElement("div");
+      field.className = "field";
+      const label = document.createElement("span");
+      label.className = "field-title";
+      label.textContent = title;
+      const choices = document.createElement("div");
+      choices.className = "preference-choice-grid";
+      const selected = new Set(Array.isArray(selectedValue) ? selectedValue : [selectedValue].filter(Boolean));
+      options.forEach(option => {
+        const pill = document.createElement("label");
+        pill.className = "option-pill";
+        const input = document.createElement("input");
+        input.type = multiple ? "checkbox" : "radio";
+        input.name = `preference-${name}`;
+        input.value = option;
+        input.checked = selected.has(option);
+        pill.append(input, document.createTextNode(option));
+        choices.appendChild(pill);
+      });
+      field.append(label, choices);
+      return field;
+    }
+
+    function createCustomInstructionField(value) {
+      const field = document.createElement("div");
+      field.className = "field";
+      const label = document.createElement("label");
+      label.setAttribute("for", "manualPreferenceCustomInstructions");
+      label.textContent = "补充你的文案偏好";
+      const textarea = document.createElement("textarea");
+      textarea.id = "manualPreferenceCustomInstructions";
+      textarea.maxLength = 500;
+      textarea.placeholder = "例如：不要每条都写回购；少用“真的”“非常”；卖点要通过体验体现。";
+      textarea.value = value || "";
+      field.append(label, textarea);
+      return field;
+    }
+
+    function savePreferenceEdit() {
+      const next = normalizeManualPreferences({
+        tone: getPreferenceInputs("tone", true),
+        preferredStructures: state.manualPreferences?.preferredStructures || [],
+        preferredOpeningTypes: getPreferenceInputs("preferredOpeningTypes", true),
+        preferredEndingTypes: getPreferenceInputs("preferredEndingTypes", true),
+        preferredLengthType: getPreferenceInputs("preferredLengthType")[0] || "",
+        preferredDetailDensity: getPreferenceInputs("preferredDetailDensity")[0] || "",
+        preferredSellingPointExpression: getPreferenceInputs("preferredSellingPointExpression")[0] || "",
+        preferredSceneSpecificity: getPreferenceInputs("preferredSceneSpecificity")[0] || "",
+        preferredStoryLevel: getPreferenceInputs("preferredStoryLevel")[0] || "",
+        avoidStyles: getPreferenceInputs("avoidStyles", true),
+        customInstructions: document.getElementById("manualPreferenceCustomInstructions")?.value.trim().slice(0, 500) || "",
+        updatedAt: new Date().toISOString()
+      });
+      state.manualPreferences = next;
+      saveManualPreferences();
+      state.preferenceEditing = false;
+      syncEffectiveStylePreferences();
+      renderPreferencePanel();
+      showToast("文案偏好已保存");
+    }
+
+    function getPreferenceInputs(name) {
+      return Array.from(document.querySelectorAll(`input[name="preference-${name}"]:checked`)).map(input => input.value);
+    }
+
+    function resetManualPreferences() {
+      if (!confirm("确定清除人工设置，恢复系统自动学习结果吗？")) return;
+      state.manualPreferences = createEmptyManualPreferences();
+      saveManualPreferences();
+      syncEffectiveStylePreferences();
+      renderPreferencePanel();
+      showToast("已恢复自动判断");
+    }
+
+    function rebuildStyleProfileFromMaterials() {
+      refreshStyleProfile();
+      syncEffectiveStylePreferences();
+      renderPreferencePanel();
+      showToast("风格画像已根据当前素材库重新生成。");
+    }
+
+    function createPreferenceMessage(text) {
+      const message = document.createElement("div");
+      message.className = "empty";
+      message.textContent = text;
+      return message;
+    }
+
+    function createPreferenceSection(title, values, note = "", full = false) {
+      const section = document.createElement("section");
+      section.className = `preference-section${full ? " full" : ""}`;
+      const heading = document.createElement("h3");
+      heading.textContent = title;
+      const list = document.createElement("ul");
+      list.className = "preference-list";
+      const cleanValues = uniqueList((values || []).filter(Boolean));
+      if (cleanValues.length) {
+        cleanValues.slice(0, 5).forEach(value => {
+          const item = document.createElement("li");
+          item.className = "chip";
+          item.textContent = value;
+          list.appendChild(item);
+        });
+      } else {
+        const empty = document.createElement("li");
+        empty.className = "chip";
+        empty.textContent = "自动判断";
+        list.appendChild(empty);
+      }
+      section.append(heading, list);
+      if (note) {
+        const p = document.createElement("p");
+        p.className = "preference-note";
+        p.textContent = note;
+        section.appendChild(p);
+      }
+      return section;
+    }
+
+    function appendPreferenceDebug(wrapper) {
+      if (!isDevMode()) return;
+      const debug = document.createElement("pre");
+      debug.className = "preference-debug";
+      debug.textContent = JSON.stringify({
+        buyerShowStyleProfile: state.styleProfile,
+        buyerShowManualPreferences: state.manualPreferences,
+        effectiveStylePreferences: state.effectiveStylePreferences,
+        sourceMap: state.effectiveStylePreferences?.sourceMap
+      }, null, 2);
+      wrapper.appendChild(debug);
+    }
+
+    function getRepresentativeScore(item) {
+      const sourceScore = { edited: 30, manual: 20, generated: 10 }[item.source] || 10;
+      const style = normalizeMaterialStyleAnalysis(item.styleAnalysis);
+      const styleScore = ["narrativeStructure", "openingType", "purchaseTrigger", "tone", "endingType"]
+        .reduce((sum, key) => sum + (style[key] ? 3 : 0), 0);
+      const createdAt = new Date(item.createdAt).getTime();
+      const recentScore = Number.isFinite(createdAt) ? Math.max(0, 10 - ((Date.now() - createdAt) / (30 * 24 * 60 * 60 * 1000))) : 0;
+      return sourceScore + styleScore + recentScore;
+    }
+
+    function createRepresentativeMaterialPayload(item) {
+      const style = normalizeMaterialStyleAnalysis(item.styleAnalysis);
+      return {
+        content: item.content,
+        source: item.source,
+        styleAnalysis: {
+          purchaseTrigger: style.purchaseTrigger,
+          narrativeStructure: style.narrativeStructure,
+          tone: style.tone,
+          lengthType: style.lengthType,
+          detailDensity: style.detailDensity,
+          openingType: style.openingType,
+          endingType: style.endingType,
+          sellingPointExpression: style.sellingPointExpression,
+          sceneSpecificity: style.sceneSpecificity,
+          contrastType: style.contrastType,
+          adIntensity: style.adIntensity,
+          storyLevel: style.storyLevel
+        }
+      };
+    }
+
+    function isTooSimilarText(textA, textB, threshold = 0.5) {
+      const source = normalizeText(textA);
+      const target = normalizeText(textB);
+      if (!source || !target) return false;
+      if (source.slice(0, 12) === target.slice(0, 12)) return true;
+      if (hasLongCommonSubstring(source, target, 8)) return true;
+      return calculateTextSimilarity(source, target) > threshold;
     }
 
     function generateLocalBatch(points, scenes, creativity, options = {}) {
@@ -980,7 +1365,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function addGeneratedToMaterials(item) {
-      addMaterial(item.content);
+      addMaterial(item.content, {
+        source: item.originalText && item.originalText !== item.content ? "edited" : "generated",
+        selectedSellingPoints: item.selectedSellingPoints || [item.point, item.secondPoint].filter(Boolean),
+        selectedUseScenes: item.selectedUseScenes || [item.scene].filter(Boolean)
+      });
     }
 
     function openMaterialModal() {
@@ -997,19 +1386,25 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function saveMaterialFromModal() {
       const content = els.materialInput.value.trim();
       if (!content) return showToast("请输入素材文案");
-      if (addMaterial(content)) closeMaterialModal();
+      if (addMaterial(content, {
+        source: "manual",
+        selectedSellingPoints: getCheckedValues("point").filter(value => value !== CUSTOM_OPTION),
+        selectedUseScenes: getCheckedValues("scene").filter(value => value !== CUSTOM_OPTION)
+      })) closeMaterialModal();
     }
 
-    function addMaterial(content) {
+    function addMaterial(content, options = {}) {
       const finalContent = String(content || "").trim();
       if (!finalContent) return false;
       if (state.materials.some(item => item.content === finalContent)) {
         showToast("素材库中已存在");
         return false;
       }
-      state.materials.unshift({ id: createId(), content: finalContent, createdAt: new Date().toISOString(), editing: false, draft: "" });
+      const material = createMaterialRecord(finalContent, options);
+      state.materials.unshift(material);
       saveMaterials();
       renderMaterials();
+      analyzeMaterialStyleAsync(material.id);
       showToast("已添加到素材库");
       return true;
     }
@@ -1072,10 +1467,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         return;
       }
       item.content = value;
+      item.source = "edited";
+      item.analysisStatus = "pending";
+      item.styleAnalysis = createEmptyMaterialStyleAnalysis();
+      item.analysisVersion = MATERIAL_ANALYSIS_VERSION;
       item.editing = false;
       item.draft = "";
       saveMaterials();
       renderMaterials();
+      analyzeMaterialStyleAsync(item.id);
       showToast("素材已更新");
     }
 
@@ -1106,6 +1506,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function deleteMaterial(id) {
       state.materials = state.materials.filter(item => item.id !== id);
       saveMaterials();
+      refreshStyleProfile();
       renderMaterials();
       showToast("素材已删除");
     }
@@ -1115,8 +1516,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (!confirm("确定清空全部素材吗？")) return;
       state.materials = [];
       saveMaterials();
+      refreshStyleProfile();
       renderMaterials();
       showToast("素材库已清空");
+    }
+
+    function migrateBuyerShowMaterials() {
+      const materials = loadMaterials();
+      saveMaterialsList(materials);
+      return materials;
     }
 
     function loadMaterials() {
@@ -1134,13 +1542,387 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         id: typeof item.id === "string" ? item.id : createId(),
         content: String(item.content),
         createdAt: item.createdAt || new Date().toISOString(),
+        source: normalizeMaterialSource(item.source),
+        selectedSellingPoints: Array.isArray(item.selectedSellingPoints) ? item.selectedSellingPoints.filter(Boolean) : [],
+        selectedUseScenes: Array.isArray(item.selectedUseScenes) ? item.selectedUseScenes.filter(Boolean) : [],
+        selectedPurchaseReasons: Array.isArray(item.selectedPurchaseReasons) ? item.selectedPurchaseReasons.filter(Boolean) : [],
+        styleAnalysis: normalizeMaterialStyleAnalysis(item.styleAnalysis),
+        analysisStatus: normalizeAnalysisStatus(item.analysisStatus, item.styleAnalysis),
+        analysisVersion: Number(item.analysisVersion) || MATERIAL_ANALYSIS_VERSION,
         editing: false,
         draft: ""
       };
     }
 
     function saveMaterials() {
-      saveArray(MATERIAL_KEY, state.materials.map(({ id, content, createdAt }) => ({ id, content, createdAt })));
+      saveMaterialsList(state.materials);
+    }
+
+    function saveMaterialsList(materials) {
+      saveArray(MATERIAL_KEY, materials.map(serializeMaterial));
+    }
+
+    function serializeMaterial(item) {
+      const normalized = normalizeMaterial(item);
+      return {
+        id: normalized.id,
+        content: normalized.content,
+        createdAt: normalized.createdAt,
+        source: normalized.source,
+        selectedSellingPoints: normalized.selectedSellingPoints,
+        selectedUseScenes: normalized.selectedUseScenes,
+        selectedPurchaseReasons: normalized.selectedPurchaseReasons,
+        styleAnalysis: normalized.styleAnalysis,
+        analysisStatus: normalized.analysisStatus,
+        analysisVersion: normalized.analysisVersion
+      };
+    }
+
+    function createMaterialRecord(content, options = {}) {
+      return normalizeMaterial({
+        id: createId(),
+        content,
+        createdAt: new Date().toISOString(),
+        source: options.source || "manual",
+        selectedSellingPoints: options.selectedSellingPoints || [],
+        selectedUseScenes: options.selectedUseScenes || [],
+        selectedPurchaseReasons: options.selectedPurchaseReasons || [],
+        styleAnalysis: createEmptyMaterialStyleAnalysis(),
+        analysisStatus: "pending",
+        analysisVersion: MATERIAL_ANALYSIS_VERSION
+      });
+    }
+
+    function createEmptyMaterialStyleAnalysis() {
+      return { ...EMPTY_MATERIAL_STYLE_ANALYSIS };
+    }
+
+    function normalizeMaterialSource(source) {
+      return ["manual", "generated", "edited"].includes(source) ? source : "manual";
+    }
+
+    function normalizeAnalysisStatus(status, styleAnalysis) {
+      if (["pending", "completed", "failed"].includes(status)) return status;
+      return styleAnalysis && Object.values(styleAnalysis).some(Boolean) ? "completed" : "pending";
+    }
+
+    function normalizeMaterialStyleAnalysis(styleAnalysis = {}) {
+      return Object.fromEntries(
+        Object.keys(EMPTY_MATERIAL_STYLE_ANALYSIS).map(key => [key, String(styleAnalysis?.[key] || "")])
+      );
+    }
+
+    async function analyzeMaterialStyleAsync(materialId) {
+      const material = state.materials.find(item => item.id === materialId);
+      if (!material) return;
+      const content = material.content;
+      try {
+        const response = await fetch("/.netlify/functions/analyze-material-style", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content })
+        });
+        if (!response.ok) throw new Error(`analyze-material-style returned ${response.status}`);
+        const data = await response.json();
+        const target = state.materials.find(item => item.id === materialId);
+        if (!target || target.content !== content) return;
+        target.styleAnalysis = normalizeMaterialStyleAnalysis(data?.styleAnalysis);
+        target.analysisStatus = "completed";
+        target.analysisVersion = MATERIAL_ANALYSIS_VERSION;
+        saveMaterials();
+        refreshStyleProfile();
+      } catch (error) {
+        console.warn("material style analysis failed:", error.message);
+        const target = state.materials.find(item => item.id === materialId);
+        if (!target || target.content !== content) return;
+        target.analysisStatus = "failed";
+        target.analysisVersion = MATERIAL_ANALYSIS_VERSION;
+        saveMaterials();
+      }
+    }
+
+    function loadStyleProfile() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STYLE_PROFILE_KEY) || "null");
+        return parsed && parsed.version === STYLE_PROFILE_VERSION ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function refreshStyleProfileIfNeeded() {
+      if (!state.styleProfile || state.styleProfile.version !== STYLE_PROFILE_VERSION) {
+        refreshStyleProfile();
+      }
+    }
+
+    function refreshStyleProfile() {
+      state.styleProfile = buildStyleProfile(state.materials);
+      saveArray(STYLE_PROFILE_KEY, state.styleProfile);
+      syncEffectiveStylePreferences();
+      if (isDevMode()) {
+        console.log("buyerShowStyleProfile", state.styleProfile);
+      }
+    }
+
+    function loadManualPreferences() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(MANUAL_PREFERENCES_KEY) || "null");
+        const normalized = normalizeManualPreferences(parsed || {});
+        saveArray(MANUAL_PREFERENCES_KEY, normalized);
+        return normalized;
+      } catch {
+        return createEmptyManualPreferences();
+      }
+    }
+
+    function saveManualPreferences() {
+      saveArray(MANUAL_PREFERENCES_KEY, normalizeManualPreferences(state.manualPreferences));
+    }
+
+    function createEmptyManualPreferences() {
+      return { ...EMPTY_MANUAL_PREFERENCES, tone: [], preferredStructures: [], preferredOpeningTypes: [], preferredEndingTypes: [], avoidStyles: [] };
+    }
+
+    function normalizeManualPreferences(value = {}) {
+      return {
+        ...createEmptyManualPreferences(),
+        version: 1,
+        updatedAt: String(value.updatedAt || ""),
+        tone: Array.isArray(value.tone) ? uniqueList(value.tone.map(String).filter(Boolean)) : [],
+        preferredStructures: Array.isArray(value.preferredStructures) ? uniqueList(value.preferredStructures.map(String).filter(Boolean)) : [],
+        preferredOpeningTypes: Array.isArray(value.preferredOpeningTypes) ? uniqueList(value.preferredOpeningTypes.map(String).filter(Boolean)) : [],
+        preferredEndingTypes: Array.isArray(value.preferredEndingTypes) ? uniqueList(value.preferredEndingTypes.map(String).filter(Boolean)) : [],
+        preferredLengthType: String(value.preferredLengthType || ""),
+        preferredDetailDensity: String(value.preferredDetailDensity || ""),
+        preferredSellingPointExpression: String(value.preferredSellingPointExpression || ""),
+        preferredSceneSpecificity: String(value.preferredSceneSpecificity || ""),
+        preferredStoryLevel: String(value.preferredStoryLevel || ""),
+        avoidStyles: Array.isArray(value.avoidStyles) ? uniqueList(value.avoidStyles.map(String).filter(Boolean)) : [],
+        customInstructions: String(value.customInstructions || "").slice(0, 500)
+      };
+    }
+
+    function syncEffectiveStylePreferences() {
+      state.manualPreferences = normalizeManualPreferences(state.manualPreferences);
+      state.effectiveStylePreferences = mergeStylePreferences(state.styleProfile, state.manualPreferences);
+    }
+
+    function mergeStylePreferences(styleProfile, manualPreferences) {
+      const profile = styleProfile || buildStyleProfile([]);
+      const manual = normalizeManualPreferences(manualPreferences);
+      const automaticTone = getTopToneValues(profile.tonePreferences, 3);
+      const sourceMap = {};
+      const chooseArray = (field, autoValue = []) => {
+        const manualValue = manual[field] || [];
+        const hasManual = Array.isArray(manualValue) && manualValue.length > 0;
+        sourceMap[field] = hasManual ? "manual" : "automatic";
+        return hasManual ? manualValue : autoValue;
+      };
+      const chooseValue = (field, autoValue = "") => {
+        const manualValue = manual[field] || "";
+        const hasManual = Boolean(manualValue);
+        sourceMap[field] = hasManual ? "manual" : "automatic";
+        return hasManual ? manualValue : autoValue;
+      };
+      const avoidStyles = uniqueList([...(profile.avoidStyles || []), ...(manual.avoidStyles || [])]);
+      sourceMap.avoidStyles = manual.avoidStyles.length ? "manual+automatic" : "automatic";
+      sourceMap.customInstructions = manual.customInstructions ? "manual" : "none";
+      return {
+        tone: chooseArray("tone", automaticTone),
+        preferredStructures: chooseArray("preferredStructures", profile.preferredStructures || []),
+        preferredOpeningTypes: chooseArray("preferredOpeningTypes", profile.preferredOpeningTypes || []),
+        preferredEndingTypes: chooseArray("preferredEndingTypes", profile.preferredEndingTypes || []),
+        preferredLengthType: chooseValue("preferredLengthType", profile.preferredLengthType || ""),
+        preferredDetailDensity: chooseValue("preferredDetailDensity", profile.preferredDetailDensity || ""),
+        preferredSellingPointExpression: chooseValue("preferredSellingPointExpression", profile.preferredSellingPointExpression || ""),
+        preferredSceneSpecificity: chooseValue("preferredSceneSpecificity", profile.preferredSceneSpecificity || ""),
+        preferredStoryLevel: chooseValue("preferredStoryLevel", profile.preferredStoryLevel || ""),
+        avoidStyles,
+        customInstructions: manual.customInstructions,
+        profileSummary: buildEffectiveProfileSummary(profile, manual, sourceMap),
+        sourceMap
+      };
+    }
+
+    function buildEffectiveProfileSummary(profile, manual, sourceMap) {
+      if (manual.customInstructions || Object.values(sourceMap).some(value => String(value).includes("manual"))) {
+        return "已结合人工偏好修正系统自动画像，生成时会优先遵守人工确认的表达方式。";
+      }
+      return profile?.profileSummary || "暂无稳定画像，继续积累满意素材后会更准确。";
+    }
+
+    function getCompletedMaterialCount() {
+      return state.materials.filter(item => item.analysisStatus === "completed").length;
+    }
+
+    function getProfileStatusLabel(count) {
+      if (count < 3) return "样本不足";
+      if (count < 10) return "初步画像";
+      return "稳定画像";
+    }
+
+    function getTopToneLabels(tonePreferences = {}, limit = 3) {
+      const entries = Object.entries(tonePreferences).sort((a, b) => b[1] - a[1]).slice(0, limit);
+      const total = Object.values(tonePreferences).reduce((sum, value) => sum + Number(value || 0), 0);
+      return entries.map(([tone, value]) => total ? `${tone} ${Math.round((Number(value) / total) * 100)}%` : tone);
+    }
+
+    function getTopToneValues(tonePreferences = {}, limit = 3) {
+      return Object.entries(tonePreferences)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([tone]) => tone);
+    }
+
+    function getToneDisplayLabels(tonePreferences = {}, manualTone = []) {
+      return uniqueList([...(manualTone || []), ...getTopToneLabels(tonePreferences, 3)]);
+    }
+
+    function detailDensityExplanation(value) {
+      if (value === "低") return "低：表达更直接，细节较少";
+      if (value === "中") return "中：包含基本购买原因和体验";
+      if (value === "高") return "高：包含具体场景、时间、对比和使用感受";
+      return "";
+    }
+
+    function sellingPointExpressionExplanation(value) {
+      if (/间接/.test(value)) return "当前偏好：通过真实使用变化间接体现卖点，而不是直接堆卖点词。";
+      if (/对比/.test(value)) return "当前偏好：通过前后对比体现卖点。";
+      if (/直接/.test(value)) return "当前偏好：更直接地表达核心体验。";
+      return "";
+    }
+
+    function buildStyleProfile(materials) {
+      const completedMaterials = materials
+        .map(normalizeMaterial)
+        .filter(item => item.analysisStatus === "completed");
+
+      const profileLevel = getStyleProfileLevel(completedMaterials.length);
+      const stats = {
+        tone: {},
+        narrativeStructure: {},
+        openingType: {},
+        endingType: {},
+        detailDensity: {},
+        lengthType: {},
+        sellingPointExpression: {},
+        sceneSpecificity: {},
+        contrastType: {},
+        purchaseTrigger: {},
+        storyLevel: {},
+        adIntensity: {}
+      };
+
+      completedMaterials.forEach(item => {
+        const weight = getMaterialStyleWeight(item);
+        const style = normalizeMaterialStyleAnalysis(item.styleAnalysis);
+        addWeightedCount(stats.tone, style.tone, weight);
+        addWeightedCount(stats.narrativeStructure, style.narrativeStructure, weight);
+        addWeightedCount(stats.openingType, style.openingType, weight);
+        addWeightedCount(stats.endingType, style.endingType, weight);
+        addWeightedCount(stats.detailDensity, style.detailDensity, weight);
+        addWeightedCount(stats.lengthType, style.lengthType, weight);
+        addWeightedCount(stats.sellingPointExpression, style.sellingPointExpression, weight);
+        addWeightedCount(stats.sceneSpecificity, style.sceneSpecificity, weight);
+        addWeightedCount(stats.contrastType, style.contrastType, weight);
+        addWeightedCount(stats.purchaseTrigger, style.purchaseTrigger, weight);
+        addWeightedCount(stats.storyLevel, style.storyLevel, weight);
+        addWeightedCount(stats.adIntensity, style.adIntensity, weight);
+      });
+
+      const profile = {
+        version: STYLE_PROFILE_VERSION,
+        updatedAt: new Date().toISOString(),
+        materialCount: completedMaterials.length,
+        tonePreferences: stats.tone,
+        preferredStructures: pickTopValues(stats.narrativeStructure, profileLevel),
+        preferredOpeningTypes: pickTopValues(stats.openingType, profileLevel),
+        preferredEndingTypes: pickTopValues(stats.endingType, profileLevel),
+        preferredDetailDensity: pickPrimaryValue(stats.detailDensity, profileLevel),
+        preferredLengthType: pickPrimaryValue(stats.lengthType, profileLevel),
+        preferredSellingPointExpression: pickPrimaryValue(stats.sellingPointExpression, profileLevel),
+        preferredSceneSpecificity: pickPrimaryValue(stats.sceneSpecificity, profileLevel),
+        preferredContrastTypes: pickTopValues(stats.contrastType, profileLevel).filter(value => value !== "无"),
+        preferredPurchaseTriggers: pickTopValues(stats.purchaseTrigger, profileLevel),
+        preferredStoryLevel: pickPrimaryValue(stats.storyLevel, profileLevel),
+        avoidStyles: buildAvoidStyles(stats, profileLevel),
+        profileSummary: ""
+      };
+      profile.profileSummary = buildProfileSummary(profile, profileLevel);
+      return profile;
+    }
+
+    function getStyleProfileLevel(count) {
+      if (count < 3) return "weak";
+      if (count < 10) return "initial";
+      return "stable";
+    }
+
+    function getMaterialStyleWeight(item) {
+      const sourceWeights = { edited: 1.4, manual: 1.2, generated: 1 };
+      let weight = sourceWeights[item.source] || 1;
+      const createdAt = new Date(item.createdAt).getTime();
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+      if (Number.isFinite(createdAt) && Date.now() - createdAt <= thirtyDays) {
+        weight *= 1.15;
+      }
+      return weight;
+    }
+
+    function addWeightedCount(bucket, value, weight) {
+      const key = String(value || "").trim();
+      if (!key || key === "其他") return;
+      bucket[key] = Number((bucket[key] || 0) + weight).toFixed(3) * 1;
+    }
+
+    function pickTopValues(bucket, profileLevel) {
+      const entries = Object.entries(bucket).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) return [];
+      const total = entries.reduce((sum, [, value]) => sum + value, 0);
+      const threshold = profileLevel === "weak" ? 0.55 : profileLevel === "initial" ? 0.34 : 0.24;
+      return entries
+        .filter(([, value], index) => index === 0 || value / total >= threshold)
+        .slice(0, profileLevel === "stable" ? 3 : 2)
+        .map(([key]) => key);
+    }
+
+    function pickPrimaryValue(bucket, profileLevel) {
+      const entries = Object.entries(bucket).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) return "";
+      const total = entries.reduce((sum, [, value]) => sum + value, 0);
+      const ratio = entries[0][1] / total;
+      const threshold = profileLevel === "weak" ? 0.7 : profileLevel === "initial" ? 0.45 : 0.34;
+      return ratio >= threshold ? entries[0][0] : "";
+    }
+
+    function buildAvoidStyles(stats, profileLevel) {
+      if (profileLevel === "weak") return [];
+      const avoid = [];
+      const adHigh = stats.adIntensity["高"] || 0;
+      const adTotal = Object.values(stats.adIntensity).reduce((sum, value) => sum + value, 0);
+      if (adTotal && adHigh / adTotal <= 0.15) avoid.push("高广告感");
+      if ((stats.tone["偏广告"] || 0) === 0) avoid.push("广告口号式语气");
+      return [...new Set(avoid)];
+    }
+
+    function buildProfileSummary(profile, profileLevel) {
+      if (!profile.materialCount) return "暂无已完成分析的素材，尚未形成用户风格画像。";
+      const certainty = profileLevel === "weak" ? "当前素材较少，只能形成弱画像：" : profileLevel === "initial" ? "当前形成初步画像：" : "当前形成稳定画像：";
+      const parts = [];
+      if (profile.preferredLengthType) parts.push(`偏好${profile.preferredLengthType}等长度`);
+      if (profile.preferredDetailDensity) parts.push(`细节密度偏${profile.preferredDetailDensity}`);
+      if (profile.preferredSceneSpecificity) parts.push(`场景表达${profile.preferredSceneSpecificity}`);
+      if (profile.preferredSellingPointExpression) parts.push(`卖点多用${profile.preferredSellingPointExpression}`);
+      if (profile.preferredStoryLevel) parts.push(`故事感为${profile.preferredStoryLevel}`);
+      if (profile.preferredOpeningTypes.length) parts.push(`常用${profile.preferredOpeningTypes.join("、")}开头`);
+      if (profile.preferredEndingTypes.length) parts.push(`结尾偏${profile.preferredEndingTypes.join("、")}`);
+      if (profile.avoidStyles.length) parts.push(`应避免${profile.avoidStyles.join("、")}`);
+      return `${certainty}${parts.length ? parts.join("，") : "偏好仍不明显，继续积累素材后会更稳定。"}。`;
+    }
+
+    function isDevMode() {
+      return location.hostname === "localhost" || location.hostname === "127.0.0.1";
     }
 
     function dedupeMaterials(items) {
@@ -1502,6 +2284,61 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function rememberHistory(contents) {
       state.history = [...contents, ...state.history].slice(0, 100);
       saveArray(HISTORY_KEY, state.history);
+    }
+
+    function loadRecentGeneratedFingerprints() {
+      return loadArray(RECENT_FINGERPRINTS_KEY)
+        .map(normalizeGeneratedFingerprint)
+        .filter(Boolean)
+        .slice(0, 100);
+    }
+
+    function rememberGeneratedFingerprints(contents) {
+      const fingerprints = contents.map(createGeneratedFingerprint).filter(Boolean);
+      if (!fingerprints.length) return;
+      saveArray(RECENT_FINGERPRINTS_KEY, [...fingerprints, ...loadRecentGeneratedFingerprints()].slice(0, 100));
+    }
+
+    function createGeneratedFingerprint(text) {
+      const normalized = normalizeText(text);
+      if (!normalized) return null;
+      const sentences = String(text || "").split(/[。！？]/).map(item => item.trim()).filter(Boolean);
+      return {
+        normalizedOpening: normalizeText(sentences[0] || normalized.slice(0, 24)).slice(0, 24),
+        structureSignature: detectLocalStructureSignature(text),
+        semanticKeywords: extractLocalSemanticKeywords(text).slice(0, 8),
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    function normalizeGeneratedFingerprint(item) {
+      if (!item || typeof item !== "object") return null;
+      return {
+        normalizedOpening: String(item.normalizedOpening || "").slice(0, 32),
+        structureSignature: String(item.structureSignature || "").slice(0, 60),
+        semanticKeywords: Array.isArray(item.semanticKeywords) ? item.semanticKeywords.map(value => String(value || "").trim()).filter(Boolean).slice(0, 8) : [],
+        createdAt: item.createdAt || new Date().toISOString()
+      };
+    }
+
+    function detectLocalStructureSignature(text) {
+      const hasReason = /主要|因为|之前|本来|刚换|朋友|刷到|回购|不想|缺/.test(text);
+      const hasScene = /办公室|工位|家里|床头|新手机|朋友|刷到|回购|中午|晚上/.test(text);
+      const hasCompare = /之前|以前|旧|比|换/.test(text);
+      const hasExperience = /温度|发热|补电|颜色|顺手|省心|安心|踏实|方便|舒服/.test(text);
+      const hasEnding = /目前|整体|对我来说|日常|至少|后面/.test(text);
+      return [
+        hasReason ? "reason" : "",
+        hasScene ? "scene" : "",
+        hasCompare ? "compare" : "",
+        hasExperience ? "experience" : "",
+        hasEnding ? "ending" : ""
+      ].filter(Boolean).join("-");
+    }
+
+    function extractLocalSemanticKeywords(text) {
+      const keywords = ["办公室", "工位", "家里", "床头", "新手机", "旧头", "杂牌", "朋友", "刷到", "回购", "温度", "发热", "补电", "颜色", "省心", "安心", "踏实", "顺手"];
+      return keywords.filter(keyword => String(text || "").includes(keyword));
     }
 
     function clearHistory() {

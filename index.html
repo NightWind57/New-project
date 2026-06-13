@@ -66,6 +66,7 @@
         <div class="panel-head">
           <h2 class="panel-title">素材库</h2>
           <div class="actions">
+            <button class="btn ghost" id="openPreferencePanelBtn" type="button">我的文案偏好</button>
             <button class="btn primary" id="openMaterialModalBtn" type="button">添加素材</button>
             <button class="btn danger" id="clearMaterialsBtn" type="button">清空素材库</button>
           </div>
@@ -75,6 +76,26 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div class="modal-backdrop" id="preferenceModal" role="dialog" aria-modal="true" aria-labelledby="preferenceModalTitle">
+    <section class="modal preference-modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="preferenceModalTitle">我的文案偏好</h2>
+          <p class="modal-subtitle" id="preferenceStatusText">正在读取风格画像</p>
+        </div>
+        <button class="btn small ghost" id="closePreferenceModalBtn" type="button">关闭</button>
+      </div>
+      <div class="modal-body preference-body">
+        <div id="preferenceView"></div>
+      </div>
+      <div class="modal-foot preference-actions">
+        <button class="btn ghost" id="editPreferenceBtn" type="button">编辑偏好</button>
+        <button class="btn ghost" id="rebuildStyleProfileBtn" type="button">重新生成画像</button>
+        <button class="btn danger" id="resetManualPreferenceBtn" type="button">恢复自动判断</button>
+      </div>
+    </section>
   </div>
 
   <div class="modal-backdrop" id="materialModal" role="dialog" aria-modal="true" aria-labelledby="materialModalTitle">
