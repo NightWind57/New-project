@@ -49,11 +49,12 @@ const adLikePhrases = [
 ];
 
 const sellingPointKeywords = {
-  "快充": ["快充", "快充速度", "充得很快", "速度很快", "补电很快", "充电速度"],
-  "低温": ["低温", "发热", "不热", "温度", "烫"],
+  "快充": ["快充", "快充速度", "充得很快", "速度很快", "补电很快", "充电速度", "补电", "短时间", "充一会", "不用一直等", "临时充电", "出门前", "午休"],
+  "低温": ["低温", "发热", "不热", "温度", "烫", "发烫", "热感", "温度稳", "温度表现", "热感控制", "长时间插着"],
   "颜值": ["颜值", "好看", "颜色", "外观", "桌面", "耐看"],
   "对比杂牌": ["杂牌", "便宜头", "不放心", "靠谱"],
-  "对比旧充电器": ["旧充电器", "旧头", "以前那个", "之前那个"]
+  "对比旧充电器": ["旧充电器", "旧头", "以前那个", "之前那个"],
+  "物流速度快": ["物流", "快递", "发货", "到货", "送到"]
 };
 
 const sellingPointRules = {
@@ -280,6 +281,7 @@ function buildPlanPrompt(request, retry = {}) {
     excludedPlanSignatures: retry.usedPlanSignatures || [],
     planRules: [
       "10 个 plan 必须全部遵守当前 selectedSellingPoints、selectedUseScenes、selectedPurchaseReasons。",
+      "如果 selectedSellingPoints 有 2 个，每个 plan 必须规划同时覆盖这 2 个卖点；如果超过 2 个，每个 plan 至少规划 2 个已选卖点。",
       "不能为多样化编造用户未选择的卖点、场景、购买事实。",
       "至少 5 种 narrativeStructure。",
       "至少 4 种 openingType。",
@@ -317,6 +319,10 @@ function buildPrompt(request, retry = {}) {
       "最高优先级：严格遵守 selectedSellingPoints 和 selectedUseScenes。",
       "用户选择的卖点、使用场景、购买原因决定写什么。",
       "用户风格画像只决定怎么写，不能改变内容限制。",
+      "如果 selectedSellingPoints 只有 1 个，每条文案必须明确覆盖这 1 个卖点。",
+      "如果 selectedSellingPoints 有 2 个，每条文案必须同时覆盖这 2 个卖点，不能只写其中一个。",
+      "如果 selectedSellingPoints 超过 2 个，每条文案最多选择其中 2 个卖点，但必须至少覆盖 2 个已选卖点。",
+      "卖点是正文核心，场景只能作为购买背景或使用背景，不能挤掉已选卖点。",
       "用户选择什么卖点，就只能写什么卖点。如果只选择一个卖点，10 条都必须围绕这个卖点，不要为了丰富而引入其他未选择卖点。",
       "用户选择什么场景，就只能写什么场景。每条文案只使用 selectedUseScenes 里的一个主要场景。",
       "如果只选择低温，只能围绕温度稳定、发热感更轻等体验，不要写快充、颜值、套装。",
@@ -742,10 +748,13 @@ function satisfiesRequiredScene(text, selectedScenes) {
 }
 
 function satisfiesSelectedSellingPoint(text, selectedPoints) {
-  return selectedPoints.some(point => {
+  if (!selectedPoints.length) return true;
+  const matchedCount = selectedPoints.filter(point => {
     const keywords = sellingPointKeywords[point] || [point];
     return keywords.some(keyword => text.includes(keyword));
-  });
+  }).length;
+  if (selectedPoints.length <= 2) return matchedCount === selectedPoints.length;
+  return matchedCount >= 2;
 }
 
 function hasBuyerShowElements(text) {

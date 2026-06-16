@@ -804,10 +804,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         const anchors = getDetailAnchorsForCondition(point, scene);
         const anchor = anchors.find(item => !usedAnchors.has(`${scene}:${item}`)) || anchors[cursor % anchors.length] || scene || point;
         usedAnchors.add(`${scene}:${anchor}`);
+        const selectedPlanPoints = getPlanSellingPoints(context.points, cursor);
         plans.push({
           id: plans.length + 1,
-          point,
-          secondPoint: shouldUseSecondPoint(context.points, context.creativity) && cursor % 3 === 0 ? pick(context.points.filter(item => item !== point)) : "",
+          point: selectedPlanPoints[0] || point,
+          secondPoint: selectedPlanPoints[1] || "",
           scene,
           narrativeStructure: structures[(cursor + plans.length) % structures.length],
           openingType: openingTypes[(cursor * 2 + plans.length) % openingTypes.length],
@@ -821,6 +822,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         cursor += 1;
       }
       return plans;
+    }
+
+    function getPlanSellingPoints(points = [], cursor = 0) {
+      const selected = uniqueList(points).filter(Boolean);
+      if (selected.length <= 1) return selected;
+      if (selected.length === 2) return selected;
+      const first = selected[cursor % selected.length];
+      const second = selected[(cursor + 1) % selected.length];
+      return [first, second].filter(Boolean);
     }
 
     function getDetailAnchorsForCondition(point, scene) {
@@ -886,24 +896,26 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function buildCopyFromPlan(plan, context) {
       const pools = getConditionPools(plan.point, plan.scene, plan);
+      const secondPointExperiences = plan.secondPoint ? getPointExperiencePool(plan.secondPoint) : [];
       const variant = plan.variant || 0;
       const parts = {
         reason: pickByIndex(pools.reasons, plan.id + variant),
         scene: pickByIndex(pools.scenes, plan.id + variant + 1),
         problem: pickByIndex(pools.problems, plan.id + variant + 2),
         experience: pickByIndex(pools.experiences, plan.id + variant + 3),
+        secondExperience: pickByIndex(secondPointExperiences, plan.id + variant + 4),
         ending: pickByIndex(pools.endings, plan.id + variant + 4)
       };
       const orders = {
-        "reason-scene-experience": ["reason", "scene", "experience", "ending"],
-        "scene-problem-solution": ["scene", "problem", "experience", "ending"],
-        "problem-change-feeling": ["problem", "experience", "scene", "ending"],
-        "source-reason-experience": ["reason", "experience", "scene", "ending"],
-        "experience-summary": ["scene", "experience", "ending"],
-        "reason-detail-feeling": ["reason", "scene", "ending"]
+        "reason-scene-experience": ["reason", "scene", "experience", "secondExperience", "ending"],
+        "scene-problem-solution": ["scene", "problem", "experience", "secondExperience", "ending"],
+        "problem-change-feeling": ["problem", "experience", "secondExperience", "scene", "ending"],
+        "source-reason-experience": ["reason", "experience", "secondExperience", "scene", "ending"],
+        "experience-summary": ["scene", "experience", "secondExperience", "ending"],
+        "reason-detail-feeling": ["reason", "experience", "secondExperience", "ending"]
       };
       const order = orders[plan.narrativeStructure] || orders["reason-scene-experience"];
-      const maxParts = plan.targetLength === "短" ? 3 : plan.targetLength === "中" ? 4 : 5;
+      const maxParts = plan.secondPoint ? (plan.targetLength === "短" ? 4 : 5) : plan.targetLength === "短" ? 3 : plan.targetLength === "中" ? 4 : 5;
       return trimToLength(compactText(order.map(key => parts[key]).filter(Boolean).slice(0, maxParts)), plan.targetLength);
     }
 
@@ -948,21 +960,25 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           problems: ["之前用别的充电头时总有点不稳定", "前一个用久了也没出什么问题，所以没再换别的", "之前边用边充时会留意温度，这个表现还算稳", "重新挑别的也麻烦，还是买用过的更放心"]
         }
       };
-      const pointPools = {
-        "低温": ["温度表现比较克制，用着会安心点", "边用边充时，发热感没有之前那么明显", "温度比原来那个稳一些", "对我来说，温度稳比说得多夸张更重要", "长时间插着也不会让人太担心", "热感控制得比较自然，不会让人一直惦记"],
-        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度比旧头更合适日常节奏", "着急出门前充一会儿也能缓一下", "午休或者开会前补电都比较顺手"],
-        "颜值": ["外观看着比较干净，放着不突兀", "颜色和日常桌面放一起还算协调", "质感比想象中耐看", "小小一个放着不占地方", "不是很抢眼，但看着舒服"],
-        "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省", "杂牌头充电时热感更明显，这个会稳一些", "给手机用的东西，还是别太凑合"],
-        "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点", "旧充电器继续备用，这个日常用更合适", "换完之后才觉得体验差距还挺明显"]
-      };
       const selectedScenePool = scenePools[scene] || getCustomScenePool(scene);
       return {
         reasons: selectedScenePool.reasons,
         scenes: selectedScenePool.scenes,
         problems: selectedScenePool.problems,
-        experiences: pointPools[point] || [`${point}这点用下来比较符合预期`, `主要看中${point}，日常用着还算顺手`],
+        experiences: getPointExperiencePool(point),
         endings: genericEndings[plan.endingType] || genericEndings["省心"]
       };
+    }
+
+    function getPointExperiencePool(point) {
+      const pointPools = {
+        "低温": ["温度表现比较克制，用着会安心点", "边用边充时，发热感没有之前那么明显", "温度比原来那个稳一些", "对我来说，温度稳比说得多夸张更重要", "长时间插着也不会让人太担心", "热感控制得比较自然，不会让人一直惦记"],
+        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度更合适日常节奏", "着急出门前充一会儿也能缓一下", "午休或者开会前补电都比较顺手"],
+        "颜值": ["外观看着比较干净，放着不突兀", "颜色和日常桌面放一起还算协调", "质感比想象中耐看", "小小一个放着不占地方", "不是很抢眼，但看着舒服"],
+        "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省", "杂牌头充电时热感更明显，这个会稳一些", "给手机用的东西，还是别太凑合"],
+        "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点", "旧充电器继续备用，这个日常用更合适", "换完之后才觉得体验差距还挺明显"]
+      };
+      return pointPools[point] || [`${point}这点用下来比较符合预期`, `主要看中${point}，日常用着还算顺手`];
     }
 
     function getCustomScenePool(scene) {
@@ -972,8 +988,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           reasons: [
             `买来给${gift.recipient}日常充电用`,
             `${gift.pronoun}平时手机用得多，想给${gift.pronoun}换个稳一点的`,
-            `主要是给${gift.recipient}备用，不想让${gift.pronoun}继续凑合旧的`,
-            `看${gift.pronoun}原来的充电头用着一般，就顺手换了一个`,
+            `主要是给${gift.recipient}备用，日常用着省心一点`,
+            `看${gift.pronoun}平时充电比较频繁，就顺手换了一个`,
             `给${gift.recipient}选这种每天都要用的小配件，还是想稳一点`
           ],
           scenes: [
@@ -984,8 +1000,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
             `不是给自己买的，所以更在意用着省不省心`
           ],
           problems: [
-            `${gift.pronoun}之前那个充电头用了挺久，体验有点跟不上`,
-            `原来的充电头继续用也行，但用着总有点不放心`,
+            `${gift.pronoun}平时手机用得频繁，充电体验会比较影响日常`,
+            `这种每天都要用的小配件，用着稳一点会省心些`,
             `${gift.pronoun}平时边用边充比较多，所以会更在意稳定性`,
             `之前那个充电时热感有点明显，才想换个稳一点的`
           ]
@@ -1001,15 +1017,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function forceFillGeneratedCopies(generated, count, context) {
       let index = 0;
       while (generated.length < count && index < 120) {
-        const point = context.points[index % Math.max(context.points.length, 1)] || "";
+        const selectedPlanPoints = getPlanSellingPoints(context.points, index);
+        const point = selectedPlanPoints[0] || "";
+        const secondPoint = selectedPlanPoints[1] || "";
         const scene = context.scenes[(generated.length + index) % Math.max(context.scenes.length, 1)] || "";
-        const content = sanitizeCopy(buildGuaranteedCopy(point, scene, generated.length + index), context.editPreference);
-        const item = createFilledGeneratedItem(content, point, scene, context.creativity);
+        const content = sanitizeCopy(buildGuaranteedCopy(point, scene, generated.length + index, secondPoint), context.editPreference);
+        const item = createFilledGeneratedItem(content, point, scene, context.creativity, secondPoint);
         const isDuplicate = generated.some(existing => existing.content === content);
         const tooClose = generated.length < 6
           ? isTooSimilarToAny(content, generated.map(existing => existing.content))
           : generated.some(existing => normalizeText(existing.content).slice(0, 14) === normalizeText(content).slice(0, 14));
-        if (!isDuplicate && !tooClose && validateGeneratedCopy(content, [point].filter(Boolean), [scene].filter(Boolean), item)) {
+        const selectedPoints = [point, secondPoint].filter(Boolean);
+        if (!isDuplicate && !tooClose && validateGeneratedCopy(content, selectedPoints, [scene].filter(Boolean), item)) {
           generated.push(item);
           rememberBatchItem(context.stats, item);
         }
@@ -1017,18 +1036,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       }
     }
 
-    function createFilledGeneratedItem(content, point, scene, creativity) {
+    function createFilledGeneratedItem(content, point, scene, creativity, secondPoint = "") {
       return {
         id: createId(),
         content,
         point,
-        secondPoint: "",
+        secondPoint,
         scene,
         lengthType: getLengthType(content),
         structureKey: "filled",
         openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
         endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
-        selectedSellingPoints: [point].filter(Boolean),
+        selectedSellingPoints: [point, secondPoint].filter(Boolean),
         selectedUseScenes: [scene].filter(Boolean),
         creativityLevel: creativity,
         useMaterialStyle: Boolean(els.useMaterials.checked),
@@ -1038,7 +1057,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       };
     }
 
-    function buildGuaranteedCopy(point, scene, index) {
+    function buildGuaranteedCopy(point, scene, index, secondPoint = "") {
       const customPool = getCustomScenePool(scene);
       const reasons = {
         "刚换手机": ["刚换新手机后，配件也想换个稳一点的", "新手机到手之后，就不太想继续用旧头了", "刚换手机会更在意日常充电稳不稳"],
@@ -1058,7 +1077,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       };
       const pointLines = {
         "低温": ["温度表现比较克制，用着会安心点", "边用边充时，发热感没有之前那么明显", "温度比原来那个稳一些", "对我来说，温度稳比说得多夸张更重要", "长时间插着也不会让人太担心"],
-        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度比旧头更合适日常节奏", "着急出门前充一会儿也能缓一下"],
+        "快充": ["临时补电挺方便", "不用一直等着手机充电", "短时间补一下电，日常够用了", "补电速度更合适日常节奏", "着急出门前充一会儿也能缓一下"],
         "颜值": ["外观看着比较干净，放着不突兀", "颜色和日常桌面放一起还算协调", "质感比想象中耐看"],
         "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省"],
         "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点"]
@@ -1068,7 +1087,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         pickByIndex(reasons[scene] || customPool.reasons, index),
         pickByIndex(details[scene] || customPool.scenes, index + 1),
         pickByIndex(pointLines[point] || [`${point}这点用下来比较符合预期`], index + 2),
-        pickByIndex(endings, index + 3)
+        secondPoint ? pickByIndex(pointLines[secondPoint] || [`${secondPoint}这点用下来比较符合预期`], index + 3) : "",
+        pickByIndex(endings, index + 4)
       ]);
     }
 
@@ -1511,6 +1531,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (new Set(sentences).size !== sentences.length) return false;
       if (hasObviousStitching(text)) return false;
       if (hasUnselectedSellingPoint(text, selectedSellingPoints, selectedUseScenes)) return false;
+      if (!coversRequiredSellingPoints(text, selectedSellingPoints)) return false;
       if (hasUnselectedScene(text, selectedUseScenes)) return false;
       if (!hasRequiredSceneSignal(text, selectedUseScenes)) return false;
       if (hasRepeatedCore(text, ["温度", "发热", "烫"], 3)) return false;
@@ -1531,6 +1552,31 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const hasExperience = /用|充|温度|发热|舒服|安心|省心|踏实|方便|顺手/.test(text);
       const elementCount = [hasReason, hasScene, hasExperience].filter(Boolean).length;
       return elementCount >= 2;
+    }
+
+    function coversRequiredSellingPoints(text, selectedSellingPoints = []) {
+      const selected = uniqueList(selectedSellingPoints).filter(Boolean);
+      if (!selected.length) return true;
+      if (selected.length <= 2) {
+        return selected.every(point => matchesSellingPointSignal(text, point));
+      }
+      return selected.filter(point => matchesSellingPointSignal(text, point)).length >= 2;
+    }
+
+    function matchesSellingPointSignal(text, point) {
+      const rules = {
+        "快充": /快充|补电|速度|充得快|充电快|充电速度|不用一直等|短时间|充一会|午休|出门前|临时充电/,
+        "低温": /低温|温度|发热|发烫|热感|烫|没那么容易热|温度稳|温度表现|热感控制|长时间插着/,
+        "颜值": /颜值|颜色|外观|好看|耐看|质感|桌面|放着不突兀|看着舒服/,
+        "对比杂牌": /杂牌|便宜头|便宜充电头|不放心|靠谱|别太省|太凑合/,
+        "对比旧充电器": /旧充电器|旧头|旧款|以前那个|之前那个|用了很久|换后|比之前|体验差距/,
+        "物流速度快": /物流|快递|发货|到货|送到/
+      };
+      return (rules[point] || new RegExp(escapeRegExp(point))).test(text);
+    }
+
+    function escapeRegExp(value) {
+      return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
     function hasUnselectedSellingPoint(text, selectedSellingPoints = [], selectedUseScenes = []) {
