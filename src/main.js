@@ -100,12 +100,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     const bannedMarketingPhrases = [
       "闭眼入", "绝绝子", "YYDS", "神器", "宝子", "姐妹们", "太香了",
       "冲就完了", "无脑入", "直接封神", "性价比天花板", "必买", "不买后悔",
-      "狠狠爱了", "谁懂啊", "狠狠爱住"
+      "狠狠爱了", "谁懂啊", "狠狠爱住", "值得推荐", "确实好用很多", "果然很好用",
+      "各方面体验都很不错"
     ];
 
     const exaggeratedPhrases = [
       "完全不发热", "一点都不烫", "秒充", "永远不伤电池", "彻底保护电池",
-      "官方原装级别", "苹果官方同款", "苹果同款"
+      "官方原装级别", "苹果官方同款", "苹果同款", "不用担心伤害电池",
+      "不会伤电池", "不伤电池"
     ];
 
     const STRUCTURE_LABELS = {
@@ -837,7 +839,23 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "对比杂牌": ["便宜头不放心", "杂牌发热", "换靠谱品牌", "每天用不想省", "新手机不凑合", "用着踏实"],
         "对比旧充电器": ["旧头用了很久", "旧头跟不上", "之前充得慢", "换后更顺手", "旧充电器备用", "体验差距明显"]
       };
-      return uniqueList([...(sceneAnchors[scene] || [scene]), ...(pointAnchors[point] || [point])]).filter(Boolean);
+      const customAnchors = getCustomSceneAnchors(scene);
+      return uniqueList([...(sceneAnchors[scene] || customAnchors), ...(pointAnchors[point] || [point])]).filter(Boolean);
+    }
+
+    function getCustomSceneAnchors(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `给${gift.recipient}日常用`,
+          `${gift.pronoun}手机用得多`,
+          `${gift.pronoun}原来的充电头不太顺手`,
+          `买给${gift.recipient}备用`,
+          `${gift.pronoun}反馈体验`,
+          `替${gift.recipient}选稳一点`
+        ];
+      }
+      return [scene].filter(Boolean);
     }
 
     function createGeneratedItemFromPlan(plan, context) {
@@ -937,13 +955,46 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         "对比杂牌": ["之前便宜头用着总有点不放心", "换个靠谱点的牌子，用着心里踏实些", "每天都要用的东西，还是不想太省", "杂牌头充电时热感更明显，这个会稳一些", "给手机用的东西，还是别太凑合"],
         "对比旧充电器": ["旧头用了挺久，确实有点跟不上", "之前那个充电体验一般，换后顺手不少", "比之前旧头用着更踏实一点", "旧充电器继续备用，这个日常用更合适", "换完之后才觉得体验差距还挺明显"]
       };
-      const selectedScenePool = scenePools[scene] || { reasons: customSceneLines(scene), scenes: customSceneLines(scene), problems: ["之前用着总有点不顺手"] };
+      const selectedScenePool = scenePools[scene] || getCustomScenePool(scene);
       return {
         reasons: selectedScenePool.reasons,
         scenes: selectedScenePool.scenes,
         problems: selectedScenePool.problems,
         experiences: pointPools[point] || [`${point}这点用下来比较符合预期`, `主要看中${point}，日常用着还算顺手`],
         endings: genericEndings[plan.endingType] || genericEndings["省心"]
+      };
+    }
+
+    function getCustomScenePool(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return {
+          reasons: [
+            `买来给${gift.recipient}日常充电用`,
+            `${gift.pronoun}平时手机用得多，想给${gift.pronoun}换个稳一点的`,
+            `主要是给${gift.recipient}备用，不想让${gift.pronoun}继续凑合旧的`,
+            `看${gift.pronoun}原来的充电头用着一般，就顺手换了一个`,
+            `给${gift.recipient}选这种每天都要用的小配件，还是想稳一点`
+          ],
+          scenes: [
+            `${gift.recipient}拿到后先用了几天`,
+            `${gift.pronoun}平时充手机比较频繁，日常用着顺手就行`,
+            `买之前主要考虑${gift.pronoun}每天都会用`,
+            `${gift.pronoun}用下来反馈还算稳定`,
+            `不是给自己买的，所以更在意用着省不省心`
+          ],
+          problems: [
+            `${gift.pronoun}之前那个充电头用了挺久，体验有点跟不上`,
+            `原来的充电头继续用也行，但用着总有点不放心`,
+            `${gift.pronoun}平时边用边充比较多，所以会更在意稳定性`,
+            `之前那个充电时热感有点明显，才想换个稳一点的`
+          ]
+        };
+      }
+      return {
+        reasons: customSceneLines(scene),
+        scenes: customSceneLines(scene),
+        problems: ["之前用着总有点不顺手", "原来的充电器继续凑合也能用，但体验一般"]
       };
     }
 
@@ -988,6 +1039,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function buildGuaranteedCopy(point, scene, index) {
+      const customPool = getCustomScenePool(scene);
       const reasons = {
         "刚换手机": ["刚换新手机后，配件也想换个稳一点的", "新手机到手之后，就不太想继续用旧头了", "刚换手机会更在意日常充电稳不稳"],
         "办公室用": ["工位上正好缺一个固定充电器", "上班时手机用得多，想固定备一个", "之前总要临时找充电头，确实不方便", "办公室里多一个固定充电头会省事些"],
@@ -1013,8 +1065,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       };
       const endings = ["目前用下来挺省心", "日常用完全够了", "整体体验比较稳", "对我来说这个体验已经够用了", "每天都要用的东西，稳一点更重要", "不算特别复杂，但用着顺手"];
       return compactText([
-        pickByIndex(reasons[scene] || customSceneLines(scene), index),
-        pickByIndex(details[scene] || customSceneLines(scene), index + 1),
+        pickByIndex(reasons[scene] || customPool.reasons, index),
+        pickByIndex(details[scene] || customPool.scenes, index + 1),
         pickByIndex(pointLines[point] || [`${point}这点用下来比较符合预期`], index + 2),
         pickByIndex(endings, index + 3)
       ]);
@@ -2283,11 +2335,33 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function customSceneLines(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `买来给${gift.recipient}日常充电用`,
+          `${gift.recipient}拿到后先用了几天`,
+          `${gift.pronoun}平时手机用得多，想换个稳一点的`,
+          `不是给自己买的，所以更在意用着省不省心`
+        ];
+      }
       return [
-        `${scene}的时候用着比较顺手`,
-        `买来主要就是为了${scene}`,
-        `${scene}这个场景下还挺实用`
+        `买来主要用于${scene}`,
+        `${scene}时用着比较顺手`,
+        `这个场景下更看重日常稳定性`
       ];
+    }
+
+    function getGiftSceneInfo(scene) {
+      const text = String(scene || "").trim();
+      if (!/给|送|买给/.test(text)) return null;
+      if (/老婆|女朋友|媳妇|女友/.test(text)) return { recipient: "老婆", pronoun: "她" };
+      if (/老公|男朋友|丈夫|男友/.test(text)) return { recipient: "老公", pronoun: "他" };
+      if (/对象|伴侣/.test(text)) return { recipient: "对象", pronoun: "对方" };
+      if (/家人|爸|妈|父母|孩子/.test(text)) return { recipient: "家里人", pronoun: "对方" };
+      const match = text.match(/给(.{1,6}?)(买|用|备|送)/) || text.match(/买给(.{1,6})/);
+      if (!match) return null;
+      const recipient = String(match[1] || "").replace(/[的\s]/g, "") || "对方";
+      return { recipient, pronoun: "对方" };
     }
 
     function pickEnding(context) {
@@ -2498,6 +2572,16 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function detailPhrasesForContext(context = {}) {
+      const gift = getGiftSceneInfo(context.scene);
+      if (gift) {
+        return [
+          `${gift.recipient}拿到后先用了几天`,
+          `${gift.pronoun}平时手机用得多`,
+          `不是给自己买的，所以更在意稳定性`,
+          `${gift.pronoun}原来的充电头用了挺久`,
+          `买来给${gift.recipient}日常充电用`
+        ];
+      }
       const sceneDetails = {
         "办公室用": [
           "放在工位上刚好",

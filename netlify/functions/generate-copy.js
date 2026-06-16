@@ -12,7 +12,11 @@ const bannedPhrases = [
   "不买后悔",
   "冲就完了",
   "狠狠爱了",
-  "谁懂啊"
+  "谁懂啊",
+  "值得推荐",
+  "确实好用很多",
+  "果然很好用",
+  "各方面体验都很不错"
 ];
 
 const exaggeratedPhrases = [
@@ -23,7 +27,10 @@ const exaggeratedPhrases = [
   "彻底保护电池",
   "官方原装级别",
   "苹果官方同款",
-  "充电不伤电池"
+  "充电不伤电池",
+  "不用担心伤害电池",
+  "不会伤电池",
+  "不伤电池"
 ];
 
 const adLikePhrases = [
