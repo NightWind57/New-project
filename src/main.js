@@ -1016,7 +1016,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function forceFillGeneratedCopies(generated, count, context) {
       let index = 0;
-      while (generated.length < count && index < 120) {
+      while (generated.length < count && index < 240) {
         const selectedPlanPoints = getPlanSellingPoints(context.points, index);
         const point = selectedPlanPoints[0] || "";
         const secondPoint = selectedPlanPoints[1] || "";
@@ -1028,7 +1028,28 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           ? isTooSimilarToAny(content, generated.map(existing => existing.content))
           : generated.some(existing => normalizeText(existing.content).slice(0, 14) === normalizeText(content).slice(0, 14));
         const selectedPoints = [point, secondPoint].filter(Boolean);
-        if (!isDuplicate && !tooClose && validateGeneratedCopy(content, selectedPoints, [scene].filter(Boolean), item)) {
+        const relaxSimilarity = index > 80 || generated.length < Math.min(3, count);
+        if (!isDuplicate && (relaxSimilarity || !tooClose) && validateGeneratedCopy(content, selectedPoints, [scene].filter(Boolean), item)) {
+          generated.push(item);
+          rememberBatchItem(context.stats, item);
+        }
+        index += 1;
+      }
+      forceAppendValidCopies(generated, count, context, index);
+    }
+
+    function forceAppendValidCopies(generated, count, context, startIndex = 0) {
+      let index = startIndex;
+      while (generated.length < count && index < startIndex + 240) {
+        const selectedPlanPoints = getPlanSellingPoints(context.points, index);
+        const point = selectedPlanPoints[0] || "";
+        const secondPoint = selectedPlanPoints[1] || "";
+        const scene = context.scenes[(generated.length + index) % Math.max(context.scenes.length, 1)] || "";
+        const content = sanitizeCopy(buildGuaranteedCopy(point, scene, generated.length + index, secondPoint), context.editPreference);
+        const item = createFilledGeneratedItem(content, point, scene, context.creativity, secondPoint);
+        const selectedPoints = [point, secondPoint].filter(Boolean);
+        const duplicate = generated.some(existing => existing.content === content);
+        if (!duplicate && validateGeneratedCopy(content, selectedPoints, [scene].filter(Boolean), item)) {
           generated.push(item);
           rememberBatchItem(context.stats, item);
         }
@@ -1651,7 +1672,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       }
       const meta = document.createElement("div");
       meta.className = "meta-row";
-      meta.append(createChip(item.point), createChip(item.scene), createChip(item.lengthType));
+      const pointChips = uniqueList([item.point, item.secondPoint, ...(item.selectedSellingPoints || [])]).filter(Boolean).map(createChip);
+      meta.append(...pointChips, createChip(item.scene), createChip(item.lengthType));
       const actions = document.createElement("div");
       actions.className = "card-actions";
       if (item.editing) {
