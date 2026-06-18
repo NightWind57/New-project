@@ -101,7 +101,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "闭眼入", "绝绝子", "YYDS", "神器", "宝子", "姐妹们", "太香了",
       "冲就完了", "无脑入", "直接封神", "性价比天花板", "必买", "不买后悔",
       "狠狠爱了", "谁懂啊", "狠狠爱住", "值得推荐", "确实好用很多", "果然很好用",
-      "各方面体验都很不错", "绝对入手", "绝对", "好用"
+      "各方面体验都很不错", "绝对入手", "绝对", "好用", "很不错"
     ];
 
     const exaggeratedPhrases = [
@@ -387,15 +387,12 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function generateTopUpCopies(count, options) {
-      const generated = generateDiverseCopies(Math.max(10, count), {
+      return generateSafeFallbackCopies(count, {
         points: options.points,
         scenes: options.scenes,
         creativity: options.creativity,
-        useMaterials: els.useMaterials.checked
+        existingItems: options.existingItems || []
       });
-      const existingTexts = (options.existingItems || []).map(item => item.content);
-      const uniqueTopUps = generated.filter(item => !existingTexts.includes(item.content));
-      return uniqueTopUps.slice(0, count);
     }
 
     function ensureGeneratedCount(items, count, context) {
@@ -427,6 +424,26 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         cursor += 1;
       }
       return accepted.slice(0, count);
+    }
+
+    function generateSafeFallbackCopies(count, context) {
+      const generated = [];
+      let cursor = 0;
+      while (generated.length < count && cursor < count * 60) {
+        const existingItems = [...(context.existingItems || []), ...generated];
+        const item = createSafeFallbackItem(context.points, context.scenes, context.creativity, cursor, existingItems);
+        const selectedPoints = item.selectedSellingPoints?.length ? item.selectedSellingPoints : [item.point, item.secondPoint].filter(Boolean);
+        const selectedScenes = item.selectedUseScenes?.length ? item.selectedUseScenes : [item.scene].filter(Boolean);
+        if (
+          validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)
+          && !generated.some(existing => existing.content === item.content)
+          && !isTooSimilarToAny(item.content, existingItems.map(existing => existing.content))
+        ) {
+          generated.push(item);
+        }
+        cursor += 1;
+      }
+      return generated;
     }
 
     function setGeneratingState(isGenerating) {
@@ -770,8 +787,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function generateLocalBatch(points, scenes, creativity, options = {}) {
-      const generated = generateDiverseCopies(10, { points, scenes, creativity, useMaterials: els.useMaterials.checked });
-      state.generated = generated.slice(0, 10);
+      state.generated = ensureGeneratedCount([], 10, { points, scenes, creativity });
       rememberHistory(state.generated.map(item => item.content));
       renderGenerated();
       showToast(options.message || `已生成 ${state.generated.length} 条文案`);
@@ -1159,6 +1175,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function buildSafeFallbackCopy({ point, secondPoint, scene, cursor, creativity, usedClauses }) {
+      const localUsed = new Set(usedClauses);
       const sentencePools = {
         reason: getSafeSceneReasonLines(scene),
         scene: getSafeSceneUseLines(scene),
@@ -1186,8 +1203,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const order = blueprints[cursor % blueprints.length];
       const sentences = [];
       order.forEach((key, offset) => {
-        const sentence = pickFreshSentence(sentencePools[key], cursor + offset * 7, usedClauses, sentences);
-        if (sentence) sentences.push(sentence);
+        const sentence = pickFreshSentence(sentencePools[key], cursor + offset * 7, localUsed, sentences);
+        if (sentence) {
+          sentences.push(sentence);
+          getSentenceSignatures(sentence).forEach(signature => localUsed.add(signature));
+        }
       });
       const type = creativity === "stable" ? "中" : creativity === "wild" ? "长" : "中";
       return sanitizeCopy(trimToLength(compactText(sentences), type));
@@ -1197,12 +1217,20 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const values = (pool || []).filter(Boolean);
       for (let offset = 0; offset < values.length; offset += 1) {
         const sentence = values[(cursor + offset) % values.length];
-        const normalized = normalizeText(sentence);
-        if (!normalized || usedClauses.has(normalized)) continue;
-        if (currentSentences.some(item => normalizeText(item) === normalized)) continue;
+        const signatures = getSentenceSignatures(sentence);
+        if (!signatures.length) continue;
+        if (signatures.some(signature => usedClauses.has(signature))) continue;
+        if (currentSentences.some(item => getSentenceSignatures(item).some(signature => signatures.includes(signature)))) continue;
         return sentence;
       }
       return values[cursor % Math.max(values.length, 1)] || "";
+    }
+
+    function getSentenceSignatures(sentence) {
+      return uniqueList([
+        normalizeText(sentence),
+        ...splitComparableClauses(sentence)
+      ]).filter(signature => signature.length >= 6);
     }
 
     function getSafeSceneReasonLines(scene) {
@@ -1244,7 +1272,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "被种草之后没有马上买，先看了几条真实反馈",
           "看评价时主要想确认日常使用是不是稳定",
           "网上看到不少使用反馈，感觉和我的需求比较接近",
-          "下单前主要看了别人提到的实际体验"
+          "下单前主要看了别人提到的实际体验",
+          "一开始只是刷到，后面看反馈多了才决定试试",
+          "评价里提到的使用细节，比参数更能打动我",
+          "买之前主要看真实买家怎么说，不太看夸张宣传",
+          "反复刷到之后才认真对比了一下",
+          "看了几条使用后的反馈，感觉更接近日常需求",
+          "不是一眼就下单，还是先看了不少评价",
+          "被推荐内容种草后，最关心的还是实际用起来稳不稳"
         ],
         "回购": [
           "之前买过一个，用着顺手才会再买",
@@ -1295,7 +1330,13 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "买回来主要看实际体验和评价里说的能不能对上",
           "评价里提到的细节，我自己也留意了一下",
           "没有只看参数，还是按平时用法试了一阵",
-          "试用几天后，基本能判断是不是适合自己"
+          "试用几天后，基本能判断是不是适合自己",
+          "实际插上用过之后，才知道评价有没有参考价值",
+          "这几天就是按平时充手机的频率来用",
+          "到手后没有刻意测试，就是正常放着用",
+          "日常用了几次之后，能感觉出和评价里说的差不多",
+          "我更关注它放在常用位置时顺不顺手",
+          "先用几天再看，感觉会比只看页面介绍靠谱"
         ],
         "回购": [
           "这次主要是多备一个，省得临时找不到",
@@ -1324,7 +1365,16 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "放着充的时候，不会因为温度问题反复去摸",
           "热感控制得比较自然，日常用着更安心",
           "连续用几天后，温度表现还是比较稳定",
-          "长时间插着时，也不会让人一直惦记"
+          "长时间插着时，也不会让人一直惦记",
+          "摸上去是正常使用的温度，不会让人紧张",
+          "平时边看消息边充，热感控制得还算克制",
+          "充电过程中温度起伏不大，用起来会放心些",
+          "比起发热明显的头，这种温和一点的体验更适合日常",
+          "手机放旁边充着，不会总想拿起来看温度",
+          "用了一阵后，温度这点确实比较稳",
+          "对我来说，温度稳定比说得多夸张更重要",
+          "插着补电时，手感上没有明显负担",
+          "日常频繁充电时，温度稳定会更影响体验"
         ],
         "颜值": [
           "外观看着比较干净，放在旁边不突兀",
@@ -1332,14 +1382,32 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "质感比想象中耐看，不会显得廉价",
           "小小一个放着不占地方，看着也清爽",
           "不是特别抢眼的款式，但日常看着舒服",
-          "拿在手里和放在桌上都比较顺眼"
+          "拿在手里和放在桌上都比较顺眼",
+          "放在桌面上不会显乱，整体比较清爽",
+          "外壳质感比我预期好，日常摆着也不违和",
+          "颜色不花哨，和手机配件放一起比较自然",
+          "尺寸不大，放在常用位置不会抢地方",
+          "看起来不是廉价塑料感，日常使用观感更舒服",
+          "整体设计比较简洁，适合长期放在外面用",
+          "外观没有多余装饰，看着会更耐看",
+          "放在包里或者桌上都不会显得笨重",
+          "这种小配件看着清爽，使用时心情也会好一点"
         ],
         "对比杂牌": [
           "之前便宜头用着总有点不放心",
           "换成靠谱一点的牌子，日常用着心里更稳",
           "每天都要用的东西，还是不想太省",
           "比起继续用杂牌头，这个用着更踏实",
-          "给手机用的东西，还是别太凑合"
+          "给手机用的东西，还是别太凑合",
+          "之前那种便宜头用久了，总会担心稳定性",
+          "换掉杂牌头之后，日常充电会少操心一点",
+          "不是追求多花钱，主要是不想继续用来路不明的头",
+          "这种天天插手机的东西，靠谱感会比便宜更重要",
+          "之前随便买的头总觉得不够稳，这次想换个放心点的",
+          "比起继续凑合便宜头，我更愿意选一个日常稳定的",
+          "杂牌头不是不能用，但每天用的时候心里总有点没底",
+          "换成这种更规范的充电头，日常使用会踏实一些",
+          "以前图便宜买过别的头，这次更看重长期用着稳不稳"
         ],
         "对比旧充电器": [
           "旧头用了挺久，体验确实有点跟不上",
@@ -1352,7 +1420,13 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "发货和到货都比较及时",
           "下单后没等太久，很快就能用上",
           "需要用的时候能及时送到，这点挺省事",
-          "物流速度比预期利落，没有耽误使用"
+          "物流速度比预期利落，没有耽误使用",
+          "到手时间比我预想的快，正好赶上使用",
+          "下单后进度更新得比较快，等起来没那么焦虑",
+          "本来急着换充电头，到货速度这一点挺加分",
+          "从下单到收到没有拖很久，体验会更顺一些",
+          "快递到得及时，刚好可以直接拿来用",
+          "需要补一个充电头时，发货快确实省事"
         ]
       };
       return map[point] || [`${point}这一点比较符合日常需求`, `${point}不是口号，用下来能感受到`];

@@ -19,7 +19,8 @@ const bannedPhrases = [
   "各方面体验都很不错",
   "绝对入手",
   "绝对",
-  "好用"
+  "好用",
+  "很不错"
 ];
 
 const exaggeratedPhrases = [
