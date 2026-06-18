@@ -101,13 +101,13 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "闭眼入", "绝绝子", "YYDS", "神器", "宝子", "姐妹们", "太香了",
       "冲就完了", "无脑入", "直接封神", "性价比天花板", "必买", "不买后悔",
       "狠狠爱了", "谁懂啊", "狠狠爱住", "值得推荐", "确实好用很多", "果然很好用",
-      "各方面体验都很不错"
+      "各方面体验都很不错", "绝对入手", "绝对", "好用"
     ];
 
     const exaggeratedPhrases = [
       "完全不发热", "一点都不烫", "秒充", "永远不伤电池", "彻底保护电池",
       "官方原装级别", "苹果官方同款", "苹果同款", "不用担心伤害电池",
-      "不会伤电池", "不伤电池"
+      "不会伤电池", "不伤电池", "低很多", "低不少"
     ];
 
     const STRUCTURE_LABELS = {
@@ -353,11 +353,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       setGeneratingState(true);
       try {
         const copies = await requestFunctionCopies(points, scenes, creativity);
-        const remoteItems = copies.slice(0, 10).map((content, index) => createFunctionGeneratedItem(content, points, scenes, creativity, index));
+        const remoteItems = createValidFunctionItems(copies, points, scenes, creativity);
         const localTopUps = remoteItems.length < 10
-          ? generateDiverseCopies(10 - remoteItems.length, { points, scenes, creativity, useMaterials: els.useMaterials.checked })
+          ? generateTopUpCopies(10 - remoteItems.length, { points, scenes, creativity, existingItems: remoteItems })
           : [];
-        state.generated = [...remoteItems, ...localTopUps].slice(0, 10);
+        state.generated = ensureGeneratedCount([...remoteItems, ...localTopUps], 10, { points, scenes, creativity });
         rememberHistory(state.generated.map(item => item.content));
         rememberGeneratedFingerprints(remoteItems.map(item => item.content));
         renderGenerated();
@@ -368,6 +368,65 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       } finally {
         setGeneratingState(false);
       }
+    }
+
+    function createValidFunctionItems(copies, points, scenes, creativity) {
+      const accepted = [];
+      const stats = createBatchStats();
+      copies.slice(0, 10).forEach((content, index) => {
+        const item = createFunctionGeneratedItem(content, points, scenes, creativity, index);
+        const selectedPoints = item.selectedSellingPoints;
+        const selectedScenes = item.selectedUseScenes;
+        if (!validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)) return;
+        if (accepted.some(existing => existing.content === item.content)) return;
+        if (isTooSimilarToAny(item.content, accepted.map(existing => existing.content))) return;
+        accepted.push(item);
+        rememberBatchItem(stats, item);
+      });
+      return accepted;
+    }
+
+    function generateTopUpCopies(count, options) {
+      const generated = generateDiverseCopies(Math.max(10, count), {
+        points: options.points,
+        scenes: options.scenes,
+        creativity: options.creativity,
+        useMaterials: els.useMaterials.checked
+      });
+      const existingTexts = (options.existingItems || []).map(item => item.content);
+      const uniqueTopUps = generated.filter(item => !existingTexts.includes(item.content));
+      return uniqueTopUps.slice(0, count);
+    }
+
+    function ensureGeneratedCount(items, count, context) {
+      const accepted = [];
+      const addIfValid = item => {
+        if (!item || !item.content) return false;
+        const selectedPoints = item.selectedSellingPoints?.length ? item.selectedSellingPoints : [item.point, item.secondPoint].filter(Boolean);
+        const selectedScenes = item.selectedUseScenes?.length ? item.selectedUseScenes : [item.scene].filter(Boolean);
+        if (!validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)) return false;
+        if (accepted.some(existing => existing.content === item.content)) return false;
+        if (isTooSimilarToAny(item.content, accepted.map(existing => existing.content))) return false;
+        accepted.push(item);
+        return true;
+      };
+
+      items.forEach(addIfValid);
+      let cursor = 0;
+      while (accepted.length < count && cursor < count * 40) {
+        const item = createSafeFallbackItem(context.points, context.scenes, context.creativity, cursor, accepted);
+        addIfValid(item);
+        cursor += 1;
+      }
+      cursor = 0;
+      while (accepted.length < count && cursor < count * 20) {
+        const item = createSafeFallbackItem(context.points, context.scenes, context.creativity, cursor + 1000, accepted);
+        if (item && item.content && !accepted.some(existing => existing.content === item.content)) {
+          accepted.push(item);
+        }
+        cursor += 1;
+      }
+      return accepted.slice(0, count);
     }
 
     function setGeneratingState(isGenerating) {
@@ -719,19 +778,21 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function createFunctionGeneratedItem(content, points, scenes, creativity, index) {
-      const point = points[index % points.length] || "";
+      const selectedPlanPoints = getPlanSellingPoints(points, index);
+      const point = selectedPlanPoints[0] || points[index % points.length] || "";
+      const secondPoint = selectedPlanPoints[1] || "";
       const scene = scenes[index % scenes.length] || "";
       return {
         id: createId(),
         content,
         point,
-        secondPoint: "",
+        secondPoint,
         scene,
         lengthType: getLengthType(content),
         structureKey: "function",
         openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
         endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
-        selectedSellingPoints: [...points],
+        selectedSellingPoints: [point, secondPoint].filter(Boolean),
         selectedUseScenes: [...scenes],
         creativityLevel: creativity,
         useMaterialStyle: Boolean(els.useMaterials.checked),
@@ -1076,6 +1137,245 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         draft: "",
         originalText: content
       };
+    }
+
+    function createSafeFallbackItem(points, scenes, creativity, cursor, accepted = []) {
+      const selectedPlanPoints = getPlanSellingPoints(points, cursor);
+      const point = selectedPlanPoints[0] || points[cursor % Math.max(points.length, 1)] || "";
+      const secondPoint = selectedPlanPoints[1] || "";
+      const scene = scenes[(cursor + accepted.length) % Math.max(scenes.length, 1)] || "";
+      const usedClauses = new Set(
+        accepted.flatMap(item => splitComparableClauses(item.content)).filter(Boolean)
+      );
+      const content = buildSafeFallbackCopy({
+        point,
+        secondPoint,
+        scene,
+        cursor,
+        creativity,
+        usedClauses
+      });
+      return createFilledGeneratedItem(content, point, scene, creativity, secondPoint);
+    }
+
+    function buildSafeFallbackCopy({ point, secondPoint, scene, cursor, creativity, usedClauses }) {
+      const sentencePools = {
+        reason: getSafeSceneReasonLines(scene),
+        scene: getSafeSceneUseLines(scene),
+        point: getSafePointLines(point),
+        second: secondPoint ? getSafePointLines(secondPoint) : [],
+        ending: getSafeEndingLines(scene)
+      };
+      const blueprints = secondPoint ? [
+        ["reason", "point", "second"],
+        ["scene", "second", "point"],
+        ["point", "reason", "second", "ending"],
+        ["reason", "scene", "point", "second"],
+        ["scene", "point", "second", "ending"],
+        ["second", "scene", "point"],
+        ["reason", "second", "point", "ending"],
+        ["point", "second", "scene"]
+      ] : [
+        ["reason", "point", "ending"],
+        ["scene", "point"],
+        ["point", "reason", "ending"],
+        ["reason", "scene", "point"],
+        ["scene", "point", "ending"],
+        ["point", "scene"]
+      ];
+      const order = blueprints[cursor % blueprints.length];
+      const sentences = [];
+      order.forEach((key, offset) => {
+        const sentence = pickFreshSentence(sentencePools[key], cursor + offset * 7, usedClauses, sentences);
+        if (sentence) sentences.push(sentence);
+      });
+      const type = creativity === "stable" ? "中" : creativity === "wild" ? "长" : "中";
+      return sanitizeCopy(trimToLength(compactText(sentences), type));
+    }
+
+    function pickFreshSentence(pool, cursor, usedClauses, currentSentences = []) {
+      const values = (pool || []).filter(Boolean);
+      for (let offset = 0; offset < values.length; offset += 1) {
+        const sentence = values[(cursor + offset) % values.length];
+        const normalized = normalizeText(sentence);
+        if (!normalized || usedClauses.has(normalized)) continue;
+        if (currentSentences.some(item => normalizeText(item) === normalized)) continue;
+        return sentence;
+      }
+      return values[cursor % Math.max(values.length, 1)] || "";
+    }
+
+    function getSafeSceneReasonLines(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `这是买给${gift.recipient}日常用的，选的时候更看重稳定`,
+          `${gift.pronoun}平时手机用得多，我想挑个顺手一点的`,
+          `给${gift.recipient}买这种每天用的小配件，还是想省心一点`,
+          `主要是替${gift.recipient}换个充电头，不想继续凑合`,
+          `不是给自己买，所以会更在意实际使用反馈`,
+          `买之前先想的是${gift.pronoun}每天会不会用得顺手`
+        ];
+      }
+      const map = {
+        "刚换手机": [
+          "刚换新手机后，充电头也想换个稳一点的",
+          "新手机到手之后，不太想继续混着用旧配件",
+          "给新手机配充电头时，我会更看重日常使用感",
+          "换机之后用手机更频繁，充电体验也更容易被注意到",
+          "旧头还能用，但给新手机用总觉得有点凑合"
+        ],
+        "办公室用": [
+          "工位上缺一个固定充电头，才想单独备一个",
+          "上班时手机用得多，公司里放一个会方便些",
+          "之前总把充电器带来带去，时间久了有点麻烦",
+          "办公室里有个固定充电位置，日常会省事不少",
+          "平时工作消息多，手机掉电时需要随手补一下"
+        ],
+        "朋友推荐购买": [
+          "朋友先用过之后推荐，我才认真看了下",
+          "听朋友说日常表现还可以，所以买来试试",
+          "身边有人实际用过再买，心里会更有底",
+          "朋友提到它用着比较稳，我才跟着下单",
+          "本来没太注意，是朋友反馈后才开始考虑"
+        ],
+        "网络种草购买": [
+          "刷到几次推荐后，我才开始认真看评价",
+          "被种草之后没有马上买，先看了几条真实反馈",
+          "看评价时主要想确认日常使用是不是稳定",
+          "网上看到不少使用反馈，感觉和我的需求比较接近",
+          "下单前主要看了别人提到的实际体验"
+        ],
+        "回购": [
+          "之前买过一个，用着顺手才会再买",
+          "前一个用了有段时间，整体稳定所以继续买",
+          "不是第一次买，主要是之前的体验比较踏实",
+          "这次算是再补一个备用，不想重新试别的",
+          "之前那只还在用，日常表现稳定才会回购"
+        ]
+      };
+      return map[scene] || [`买来主要是为了${scene || "日常使用"}`, `这个使用场景里，稳定和顺手会更重要`];
+    }
+
+    function getSafeSceneUseLines(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `${gift.recipient}拿到后先按平时习惯用了几天`,
+          `${gift.pronoun}平时充手机比较频繁，日常顺手更重要`,
+          `我主要看${gift.pronoun}用下来有没有觉得麻烦`,
+          `${gift.pronoun}平时边用边充的时候比较多`,
+          `这种小配件放在常用位置，最好别让人惦记`
+        ];
+      }
+      const map = {
+        "刚换手机": [
+          "刚换机这几天用得比较频繁",
+          "新手机平时刷消息和拍照都不少",
+          "换机之后会更留意充电时的细节",
+          "给新手机用，首先就是不想影响日常体验",
+          "旧头先放一边，新手机日常用这个更合适"
+        ],
+        "办公室用": [
+          "放在工位旁边，手机低电量时随手能插",
+          "午休前补一下电，下午用起来会从容些",
+          "电脑旁边固定放着，不用每次从包里找",
+          "开会前电量不多时，可以临时补一会儿",
+          "一天里零碎充电的次数不少，固定一个更方便"
+        ],
+        "朋友推荐购买": [
+          "到手后按自己平时的用法试了几天",
+          "朋友说的几个点，我自己也特意留意了一下",
+          "用了几天后，整体和朋友反馈比较接近",
+          "不是只听朋友说，还是自己试过才放心",
+          "跟着朋友买回来后，先看日常使用感"
+        ],
+        "网络种草购买": [
+          "到手后先按日常习惯用了几天",
+          "买回来主要看实际体验和评价里说的能不能对上",
+          "评价里提到的细节，我自己也留意了一下",
+          "没有只看参数，还是按平时用法试了一阵",
+          "试用几天后，基本能判断是不是适合自己"
+        ],
+        "回购": [
+          "这次主要是多备一个，省得临时找不到",
+          "前一个还在用，这次算是补一个常用位置",
+          "用过之后再买，心里会更有底",
+          "这类每天都用的小东西，用顺手就不太想换",
+          "再买一个主要是图省心，不想重新筛选"
+        ]
+      };
+      return map[scene] || [`放在${scene || "常用位置"}里实际试了几天`, `这个场景下更看重日常顺不顺手`];
+    }
+
+    function getSafePointLines(point) {
+      const map = {
+        "快充": [
+          "临时补电时不用等太久",
+          "短时间补一下电，日常节奏能跟上",
+          "电量低的时候插一会儿，能缓解不少",
+          "平时零碎时间补电也够用",
+          "需要出门或忙起来前，补电效率比较实在",
+          "不用专门空出很久等手机充电"
+        ],
+        "低温": [
+          "充一段时间后，温度表现比较稳",
+          "边用边充时，热感没有之前那么明显",
+          "放着充的时候，不会因为温度问题反复去摸",
+          "热感控制得比较自然，日常用着更安心",
+          "连续用几天后，温度表现还是比较稳定",
+          "长时间插着时，也不会让人一直惦记"
+        ],
+        "颜值": [
+          "外观看着比较干净，放在旁边不突兀",
+          "颜色和日常桌面放一起还算协调",
+          "质感比想象中耐看，不会显得廉价",
+          "小小一个放着不占地方，看着也清爽",
+          "不是特别抢眼的款式，但日常看着舒服",
+          "拿在手里和放在桌上都比较顺眼"
+        ],
+        "对比杂牌": [
+          "之前便宜头用着总有点不放心",
+          "换成靠谱一点的牌子，日常用着心里更稳",
+          "每天都要用的东西，还是不想太省",
+          "比起继续用杂牌头，这个用着更踏实",
+          "给手机用的东西，还是别太凑合"
+        ],
+        "对比旧充电器": [
+          "旧头用了挺久，体验确实有点跟不上",
+          "之前那个充电头继续备用，这个日常用更合适",
+          "换完之后，日常使用顺手了不少",
+          "比起旧充电器，这个用起来更稳定些",
+          "旧头还能凑合，但新这个更适合常用"
+        ],
+        "物流速度快": [
+          "发货和到货都比较及时",
+          "下单后没等太久，很快就能用上",
+          "需要用的时候能及时送到，这点挺省事",
+          "物流速度比预期利落，没有耽误使用"
+        ]
+      };
+      return map[point] || [`${point}这一点比较符合日常需求`, `${point}不是口号，用下来能感受到`];
+    }
+
+    function getSafeEndingLines(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `${gift.recipient}用着省心，我也不用再反复操心`,
+          `目前看${gift.pronoun}用着还算顺手`,
+          `这种每天用的小东西，稳定一点就够了`,
+          `整体不是夸张的感觉，胜在日常踏实`
+        ];
+      }
+      return [
+        "目前用下来，属于稳定省心的小升级",
+        "日常使用够踏实，没有明显想吐槽的点",
+        "不是夸张的感觉，胜在每天用着顺手",
+        "对我来说，这种实际体验比参数更重要",
+        "继续用下来如果稳定，就算买对了",
+        "整体更像是把日常充电这件事变省心了"
+      ];
     }
 
     function buildGuaranteedCopy(point, scene, index, secondPoint = "") {
@@ -2717,11 +3017,22 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function sanitizeCopy(text, editPreference = {}) {
-      let next = String(text || "");
-      [...bannedMarketingPhrases, ...exaggeratedPhrases, ...(editPreference.avoidPhrases || [])].forEach(phrase => {
+      const avoid = uniqueList([...bannedMarketingPhrases, ...exaggeratedPhrases, ...(editPreference.avoidPhrases || [])]).filter(Boolean);
+      const sentences = String(text || "")
+        .split(/(?<=[。！？])/)
+        .map(sentence => sentence.trim())
+        .filter(Boolean)
+        .filter(sentence => !avoid.some(phrase => sentence.includes(phrase)));
+      let next = sentences.length ? sentences.join("") : String(text || "");
+      avoid.forEach(phrase => {
         next = next.replaceAll(phrase, "");
       });
-      return next.replace(/，，+/g, "，").replace(/。。+/g, "。").replace(/，。/g, "。").trim();
+      return next
+        .replace(/，，+/g, "，")
+        .replace(/。。+/g, "。")
+        .replace(/，。/g, "。")
+        .replace(/^。+/, "")
+        .trim();
     }
 
     function maybeApplyEditPreference(parts, context) {

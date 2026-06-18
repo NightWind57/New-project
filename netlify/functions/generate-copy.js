@@ -16,7 +16,10 @@ const bannedPhrases = [
   "值得推荐",
   "确实好用很多",
   "果然很好用",
-  "各方面体验都很不错"
+  "各方面体验都很不错",
+  "绝对入手",
+  "绝对",
+  "好用"
 ];
 
 const exaggeratedPhrases = [
@@ -30,7 +33,9 @@ const exaggeratedPhrases = [
   "充电不伤电池",
   "不用担心伤害电池",
   "不会伤电池",
-  "不伤电池"
+  "不伤电池",
+  "低很多",
+  "低不少"
 ];
 
 const adLikePhrases = [
