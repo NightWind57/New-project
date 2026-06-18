@@ -101,7 +101,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "闭眼入", "绝绝子", "YYDS", "神器", "宝子", "姐妹们", "太香了",
       "冲就完了", "无脑入", "直接封神", "性价比天花板", "必买", "不买后悔",
       "狠狠爱了", "谁懂啊", "狠狠爱住", "值得推荐", "确实好用很多", "果然很好用",
-      "各方面体验都很不错", "绝对入手", "绝对", "好用", "很不错"
+      "各方面体验都很不错", "绝对入手", "绝对", "好用", "很不错", "这个场景下",
+      "喜欢是因为"
     ];
 
     const exaggeratedPhrases = [
@@ -127,6 +128,286 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     ];
 
     const weakGenericPhrases = ["真的", "特别", "非常", "很快", "很好看", "很不错", "超", "巨", "太", "绝"];
+
+    const COPY_STRUCTURES = [
+      { key: "reason-experience-feeling", order: ["reason", "scene", "point", "secondPoint", "ending"] },
+      { key: "scene-usage-result", order: ["scene", "point", "secondPoint", "ending"] },
+      { key: "concern-check-result", order: ["reason", "point", "scene", "secondPoint"] },
+      { key: "source-verify-feeling", order: ["reason", "scene", "point", "secondPoint", "ending"] },
+      { key: "daily-detail-summary", order: ["scene", "point", "ending", "secondPoint"] },
+      { key: "problem-change-summary", order: ["reason", "point", "secondPoint", "ending"] },
+      { key: "specific-moment-result", order: ["scene", "point", "secondPoint"] },
+      { key: "plain-review", order: ["reason", "point", "scene"] },
+      { key: "detail-first-review", order: ["point", "scene", "secondPoint", "ending"] },
+      { key: "low-key-conclusion", order: ["scene", "reason", "point", "secondPoint"] }
+    ];
+
+    const COPY_ENDINGS = [
+      "目前用下来，属于稳定省心的小升级",
+      "日常使用够踏实，没有明显想吐槽的点",
+      "不是夸张的感觉，胜在每天用着顺手",
+      "对我来说，这种实际体验比参数更重要",
+      "继续用下来如果稳定，就算买对了",
+      "整体更像是把日常充电这件事变省心了",
+      "这种每天都要用的小配件，稳定比噱头重要",
+      "没有宣传里那么夸张，但实际用着比较稳",
+      "目前看下来，适合长期放在常用位置用",
+      "小东西不需要多花哨，顺手就够了"
+    ];
+
+    const SELLING_POINT_KNOWLEDGE = {
+      "快充": {
+        signals: /快充|补电|速度|充电快|不用久等|短时间|充一会|临时充电/,
+        forbiddenWhenUnselected: /快充|补电快|速度快|充电速度|不用一直等|短时间补电|临时补电/,
+        expressions: [
+          "临时补电时不用等太久",
+          "短时间补一下电，日常节奏能跟上",
+          "电量低的时候插一会儿，能缓解不少",
+          "平时零碎时间补电也够用",
+          "需要出门或忙起来前，补电效率比较实在",
+          "不用专门空出很久等手机充电",
+          "午休或者开会前补一下，下午用着会踏实些",
+          "手机快没电时插上，电量回得比较及时",
+          "不是追求夸张速度，主要是日常补电不拖沓",
+          "通勤前临时充一会儿，也能缓一下电量焦虑",
+          "日常用下来，补电速度更适合碎片时间",
+          "不用等到满电才敢出门，这点比较实用"
+        ]
+      },
+      "低温": {
+        signals: /低温|温度|发热|发烫|热感|烫|温度稳|热感控制/,
+        forbiddenWhenUnselected: /低温|温度|发热|发烫|热感|烫|温度稳|热感控制/,
+        expressions: [
+          "充一段时间后，温度表现比较稳",
+          "边用边充时，热感没有之前那么明显",
+          "放着充的时候，不会因为温度问题反复去摸",
+          "热感控制得比较自然，日常用着更安心",
+          "连续用几天后，温度表现还是比较稳定",
+          "长时间插着时，也不会让人一直惦记",
+          "摸上去是正常使用的温度，不会让人紧张",
+          "平时边看消息边充，热感控制得还算克制",
+          "充电过程中温度起伏不大，用起来会放心些",
+          "比起发热明显的头，这种温和一点的体验更适合日常",
+          "手机放旁边充着，不会总想拿起来看温度",
+          "日常频繁充电时，温度稳定会更影响体验"
+        ]
+      },
+      "颜值": {
+        signals: /颜值|颜色|外观|好看|耐看|质感|桌面|清爽|简洁|顺眼/,
+        forbiddenWhenUnselected: /颜值|颜色|外观|好看|耐看|质感|桌面搭配|清爽|顺眼/,
+        expressions: [
+          "外观看着比较干净，放在旁边不突兀",
+          "颜色和日常桌面放一起还算协调",
+          "质感比想象中耐看，不会显得廉价",
+          "小小一个放着不占地方，看着也清爽",
+          "不是特别抢眼的款式，但日常看着舒服",
+          "拿在手里和放在桌上都比较顺眼",
+          "放在桌面上不会显乱，整体比较清爽",
+          "外壳质感比我预期好，日常摆着也不违和",
+          "颜色不花哨，和手机配件放一起比较自然",
+          "尺寸不大，放在常用位置不会抢地方",
+          "整体设计比较简洁，适合长期放在外面用",
+          "外观没有多余装饰，看着会更耐看"
+        ]
+      },
+      "对比杂牌": {
+        signals: /杂牌|便宜头|不放心|靠谱|来路不明|别太凑合|图便宜/,
+        forbiddenWhenUnselected: /杂牌|便宜头|不放心|靠谱点的牌子|来路不明|图便宜/,
+        expressions: [
+          "之前便宜头用着总有点不放心",
+          "换成靠谱一点的牌子，日常用着心里更稳",
+          "每天都要用的东西，还是不想太省",
+          "比起继续用杂牌头，这个用着更踏实",
+          "给手机用的东西，还是别太凑合",
+          "之前那种便宜头用久了，总会担心稳定性",
+          "换掉杂牌头之后，日常充电会少操心一点",
+          "不是追求多花钱，主要是不想继续用来路不明的头",
+          "这种天天插手机的东西，靠谱感会比便宜更重要",
+          "之前随便买的头总觉得不够稳，这次想换个放心点的",
+          "杂牌头不是不能用，但每天用的时候心里总有点没底",
+          "以前图便宜买过别的头，这次更看重长期用着稳不稳"
+        ]
+      },
+      "对比旧充电器": {
+        signals: /旧充电器|旧头|旧款|以前那个|之前那个|换后|比之前|体验差距/,
+        forbiddenWhenUnselected: /旧充电器|旧头|旧款|以前那个|之前那个|用了很久|换完之后|比之前/,
+        expressions: [
+          "旧头用了挺久，体验确实有点跟不上",
+          "之前那个充电头继续备用，这个日常用更合适",
+          "换完之后，日常使用顺手了不少",
+          "比起旧充电器，这个用起来更稳定些",
+          "旧头还能凑合，但新这个更适合常用",
+          "以前那个用久了，总觉得充电体验有点拖",
+          "之前的旧头不是不能用，只是日常体验一般",
+          "换掉旧头以后，使用感会更符合现在的需求",
+          "旧充电器放备用，新这个更适合每天用",
+          "用过旧头再换，会更容易感受到差别"
+        ]
+      },
+      "物流速度快": {
+        signals: /物流|快递|发货|到货|送到|及时/,
+        forbiddenWhenUnselected: /物流|快递|发货|到货|送到/,
+        expressions: [
+          "发货和到货都比较及时",
+          "下单后没等太久，很快就能用上",
+          "需要用的时候能及时送到，这点挺省事",
+          "物流速度比预期利落，没有耽误使用",
+          "到手时间比我预想的快，正好赶上使用",
+          "下单后进度更新得比较快，等起来没那么焦虑",
+          "本来急着换充电头，到货速度这一点挺加分",
+          "从下单到收到没有拖很久，体验会更顺一些",
+          "快递到得及时，刚好可以直接拿来用",
+          "需要补一个充电头时，发货快确实省事"
+        ]
+      }
+    };
+
+    const SCENE_KNOWLEDGE = {
+      "刚换手机": {
+        signals: /刚换|新手机|手机刚换|旧头|旧充电头|配件/,
+        forbiddenWhenUnselected: /刚换手机|新手机|手机刚换|刚换机/,
+        reasons: [
+          "刚换新手机后，充电头也想换个稳一点的",
+          "新手机到手之后，不太想继续混着用旧配件",
+          "给新手机配充电头时，我会更看重日常使用感",
+          "换机之后用手机更频繁，充电体验也更容易被注意到",
+          "旧头还能用，但给新手机用总觉得有点凑合",
+          "刚换手机时，配件也会想一起换得稳一点",
+          "新机刚开始用，充电头不想随便凑合",
+          "手机换新后，对充电这件事会比以前更挑一点",
+          "原来的头还能当备用，但新手机想配个更稳定的",
+          "刚换机的时候，最怕配件拖后腿"
+        ],
+        scenes: [
+          "刚换机这几天用得比较频繁",
+          "新手机平时刷消息和拍照都不少",
+          "换机之后会更留意充电时的细节",
+          "给新手机用，首先就是不想影响日常体验",
+          "旧头先放一边，新手机日常用这个更合适",
+          "新手机刚开始用，充电体验会被放大",
+          "这几天基本按平时习惯充，没有刻意测试",
+          "新机电量掉得快的时候，充电体验会很直接",
+          "配件换上后，日常用起来有没有负担很明显",
+          "旧配件先收起来，新手机常用这一个"
+        ]
+      },
+      "办公室用": {
+        signals: /办公室|公司|工位|上班|午休|放工位|开会/,
+        forbiddenWhenUnselected: /办公室|公司|工位|上班|午休|放工位/,
+        reasons: [
+          "工位上缺一个固定充电头，才想单独备一个",
+          "上班时手机用得多，公司里放一个会方便些",
+          "之前总把充电器带来带去，时间久了有点麻烦",
+          "办公室里有个固定充电位置，日常会省事不少",
+          "平时工作消息多，手机掉电时需要随手补一下",
+          "主要是不想在公司临时找充电头",
+          "公司里一直没有顺手的备用头，这次干脆补一个",
+          "每天在工位待的时间长，充电头固定放着更方便",
+          "以前手机没电就到处借头，挺耽误事",
+          "上班时不想因为电量低影响回消息"
+        ],
+        scenes: [
+          "放在工位旁边，手机低电量时随手能插",
+          "午休前补一下电，下午用起来会从容些",
+          "电脑旁边固定放着，不用每次从包里找",
+          "开会前电量不多时，可以临时补一会儿",
+          "一天里零碎充电的次数不少，固定一个更方便",
+          "放在办公室固定位置，用起来会更顺手",
+          "上午消息多的时候，随手插一下就能继续用",
+          "工位旁边留着它，手机低电量时不用慌",
+          "午休回来继续用手机，电量会踏实一点",
+          "放在电脑旁边，日常充电动作少了很多"
+        ]
+      },
+      "朋友推荐购买": {
+        signals: /朋友推荐|朋友说|朋友用了|跟着朋友|听朋友/,
+        forbiddenWhenUnselected: /朋友推荐|朋友说|朋友用了|跟着朋友|听朋友/,
+        reasons: [
+          "朋友先用过之后推荐，我才认真看了下",
+          "听朋友说日常表现还可以，所以买来试试",
+          "身边有人实际用过再买，心里会更有底",
+          "朋友提到它用着比较稳，我才跟着下单",
+          "本来没太注意，是朋友反馈后才开始考虑",
+          "朋友说这类小配件还是选稳定点的，我才认真挑",
+          "朋友用了有一阵子才推荐，我会更愿意参考",
+          "不是单看页面介绍，主要是朋友实际用过",
+          "朋友平时也用苹果手机，他说可以我才放心些",
+          "买之前问过朋友使用感，才决定试一下"
+        ],
+        scenes: [
+          "到手后按自己平时的用法试了几天",
+          "朋友说的几个点，我自己也特意留意了一下",
+          "用了几天后，整体和朋友反馈比较接近",
+          "不是只听朋友说，还是自己试过才放心",
+          "跟着朋友买回来后，先看日常使用感",
+          "实际用了几次，才知道朋友推荐有没有参考价值",
+          "我没有特意测试参数，就是按平时方式充了几次",
+          "朋友提到的体验，我到手后也对照着看了看",
+          "用了一阵后，能理解朋友为什么会推荐",
+          "自己试过几天，才知道适不适合日常用"
+        ]
+      },
+      "网络种草购买": {
+        signals: /刷到|种草|看评价|网上看到|别人推荐|真实反馈/,
+        forbiddenWhenUnselected: /刷到|种草|看评价|网上看到|别人推荐|真实反馈/,
+        reasons: [
+          "刷到几次推荐后，我才开始认真看评价",
+          "被种草之后没有马上买，先看了几条真实反馈",
+          "看评价时主要想确认日常使用是不是稳定",
+          "网上看到不少使用反馈，感觉和我的需求比较接近",
+          "下单前主要看了别人提到的实际体验",
+          "一开始只是刷到，后面看反馈多了才决定试试",
+          "评价里提到的使用细节，比参数更能打动我",
+          "买之前主要看真实买家怎么说，不太看夸张宣传",
+          "不是刷到一次就买，反复看了几条反馈才下单",
+          "看到不少人提到日常体验，才觉得可以试试",
+          "下单前最关心的不是参数，是实际用起来稳不稳",
+          "看别人晒的使用感比看介绍更有参考"
+        ],
+        scenes: [
+          "到手后先按日常习惯用了几天",
+          "买回来主要看实际体验和评价里说的能不能对上",
+          "评价里提到的细节，我自己也留意了一下",
+          "没有只看参数，还是按平时用法试了一阵",
+          "试用几天后，基本能判断是不是适合自己",
+          "实际插上用过之后，才知道评价有没有参考价值",
+          "这几天就是按平时充手机的频率来用",
+          "到手后没有刻意测试，就是正常放着用",
+          "用了几次之后，才有真实感受",
+          "评价里说的点，实际使用时能慢慢对上",
+          "正常充了几天，比单看推荐内容更有判断",
+          "到手后先看日常使用是否顺手"
+        ]
+      },
+      "回购": {
+        signals: /回购|又买|再买|第二个|之前买过|继续买/,
+        forbiddenWhenUnselected: /回购|又买|再买|第二个|之前买过|继续买/,
+        reasons: [
+          "之前买过一个，用着顺手才会再买",
+          "前一个用了有段时间，整体稳定所以继续买",
+          "不是第一次买，主要是之前的体验比较踏实",
+          "这次算是再补一个备用，不想重新试别的",
+          "之前那只还在用，日常表现稳定才会回购",
+          "用过之后心里有底，所以这次直接继续买",
+          "上一个用到现在没什么大问题，所以又补了一个",
+          "之前用过觉得适合日常，才会继续买同款",
+          "再买主要是省得重新筛选，熟悉的更稳妥",
+          "用过一次后知道大概表现，这次下单更干脆"
+        ],
+        scenes: [
+          "这次主要是多备一个，省得临时找不到",
+          "前一个还在用，这次算是补一个常用位置",
+          "用过之后再买，心里会更有底",
+          "这类每天都用的小东西，用顺手就不太想换",
+          "再买一个主要是图省心，不想重新筛选",
+          "第二个准备放在另一个常用位置",
+          "原来那个继续用，新买的放另一个地方备用",
+          "这次不是尝鲜，更多是补充一个常用配件",
+          "之前用顺了，再买一个放着会方便些",
+          "不同位置各放一个，日常不用来回拿"
+        ]
+      }
+    };
 
     const concreteDetailKeywords = [
       "办公室", "工位", "床头", "家里", "回购", "刚换手机", "旧充电器", "杂牌",
@@ -387,7 +668,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function generateTopUpCopies(count, options) {
-      return generateSafeFallbackCopies(count, {
+      return generateSemanticCopies(count, {
         points: options.points,
         scenes: options.scenes,
         creativity: options.creativity,
@@ -397,30 +678,40 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     function ensureGeneratedCount(items, count, context) {
       const accepted = [];
-      const addIfValid = item => {
+      const addIfValid = (item, options = {}) => {
         if (!item || !item.content) return false;
         const selectedPoints = item.selectedSellingPoints?.length ? item.selectedSellingPoints : [item.point, item.secondPoint].filter(Boolean);
         const selectedScenes = item.selectedUseScenes?.length ? item.selectedUseScenes : [item.scene].filter(Boolean);
         if (!validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)) return false;
         if (accepted.some(existing => existing.content === item.content)) return false;
-        if (isTooSimilarToAny(item.content, accepted.map(existing => existing.content))) return false;
+        if (hasRepeatedOpening(item.content, accepted.map(existing => existing.content))) return false;
+        if (!options.relaxedSimilarity && isTooSimilarToAny(item.content, accepted.map(existing => existing.content))) return false;
         accepted.push(item);
         return true;
       };
 
       items.forEach(addIfValid);
+      generateSemanticCopies(count - accepted.length, {
+        points: context.points,
+        scenes: context.scenes,
+        creativity: context.creativity,
+        existingItems: accepted
+      }).forEach(item => addIfValid(item, { relaxedSimilarity: true }));
+
       let cursor = 0;
       while (accepted.length < count && cursor < count * 40) {
-        const item = createSafeFallbackItem(context.points, context.scenes, context.creativity, cursor, accepted);
-        addIfValid(item);
-        cursor += 1;
-      }
-      cursor = 0;
-      while (accepted.length < count && cursor < count * 20) {
-        const item = createSafeFallbackItem(context.points, context.scenes, context.creativity, cursor + 1000, accepted);
-        if (item && item.content && !accepted.some(existing => existing.content === item.content)) {
-          accepted.push(item);
-        }
+        const selectedPlanPoints = getPlanSellingPoints(context.points, cursor + 5000);
+        const scene = context.scenes[cursor % Math.max(context.scenes.length, 1)] || "";
+        const plan = createSemanticCopyPlan(cursor + 5000, {
+          points: context.points,
+          scenes: [scene].filter(Boolean),
+          creativity: context.creativity
+        });
+        plan.selectedPoints = selectedPlanPoints;
+        plan.point = selectedPlanPoints[0] || "";
+        plan.secondPoint = selectedPlanPoints[1] || "";
+        plan.scene = scene;
+        addIfValid(createSemanticGeneratedItem(plan, { creativity: context.creativity }), { relaxedSimilarity: true });
         cursor += 1;
       }
       return accepted.slice(0, count);
@@ -787,10 +1078,274 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function generateLocalBatch(points, scenes, creativity, options = {}) {
-      state.generated = ensureGeneratedCount([], 10, { points, scenes, creativity });
+      state.generated = generateSemanticCopies(10, { points, scenes, creativity, existingItems: [] });
       rememberHistory(state.generated.map(item => item.content));
       renderGenerated();
       showToast(options.message || `已生成 ${state.generated.length} 条文案`);
+    }
+
+    function generateSemanticCopies(count, options = {}) {
+      const points = uniqueList(options.points || []).filter(Boolean);
+      const scenes = uniqueList(options.scenes || []).filter(Boolean);
+      const creativity = options.creativity || "standard";
+      const generated = [];
+      const existingItems = options.existingItems || [];
+      const existingTexts = existingItems.map(item => item.content).filter(Boolean);
+      const plans = createSemanticCopyPlans(Math.max(count * 3, 30), { points, scenes, creativity });
+      let planIndex = 0;
+
+      while (generated.length < count && planIndex < plans.length) {
+        const plan = plans[planIndex];
+        const item = createSemanticGeneratedItem(plan, { creativity });
+        const allTexts = [...existingTexts, ...generated.map(existing => existing.content)];
+        if (acceptSemanticItem(item, allTexts, { relaxedSimilarity: planIndex > count * 2 })) {
+          generated.push(item);
+        }
+        planIndex += 1;
+      }
+
+      let cursor = 0;
+      while (generated.length < count && cursor < count * 80) {
+        const plan = createSemanticCopyPlan(cursor + 1000, { points, scenes, creativity });
+        const item = createSemanticGeneratedItem(plan, { creativity });
+        const allTexts = [...existingTexts, ...generated.map(existing => existing.content)];
+        if (
+          item.content
+          && !generated.some(existing => existing.content === item.content)
+          && !hasRepeatedOpening(item.content, generated.map(existing => existing.content))
+          && validateGeneratedCopy(item.content, item.selectedSellingPoints, item.selectedUseScenes, item)
+        ) {
+          if (cursor > count * 12 || !isTooSimilarToAny(item.content, allTexts)) {
+            generated.push(item);
+          }
+        }
+        cursor += 1;
+      }
+
+      let finalCursor = 0;
+      while (generated.length < count && finalCursor < count * 120) {
+        const plan = createSemanticCopyPlan(finalCursor + 9000, { points, scenes, creativity });
+        const item = createSemanticGeneratedItem(plan, { creativity });
+        if (
+          item.content
+          && !generated.some(existing => existing.content === item.content)
+          && !existingTexts.includes(item.content)
+          && validateGeneratedCopy(item.content, item.selectedSellingPoints, item.selectedUseScenes, item)
+        ) {
+          generated.push(item);
+        }
+        finalCursor += 1;
+      }
+
+      return generated.slice(0, count);
+    }
+
+    function acceptSemanticItem(item, existingTexts, options = {}) {
+      if (!item?.content) return false;
+      if (!validateGeneratedCopy(item.content, item.selectedSellingPoints, item.selectedUseScenes, item)) return false;
+      if (existingTexts.includes(item.content)) return false;
+      if (hasRepeatedOpening(item.content, existingTexts)) return false;
+      if (!options.relaxedSimilarity && isTooSimilarToAny(item.content, existingTexts)) return false;
+      return true;
+    }
+
+    function hasRepeatedOpening(text, existingTexts = []) {
+      const opening = normalizeOpeningSentence(text);
+      if (!opening) return false;
+      return existingTexts.some(existing => normalizeOpeningSentence(existing) === opening);
+    }
+
+    function normalizeOpeningSentence(text) {
+      const sentence = String(text || "").split("。").map(item => item.trim()).filter(Boolean)[0] || "";
+      return normalizeText(sentence).slice(0, 18);
+    }
+
+    function createSemanticCopyPlans(count, context) {
+      return Array.from({ length: count }, (_, index) => createSemanticCopyPlan(index, context));
+    }
+
+    function createSemanticCopyPlan(index, context) {
+      const points = uniqueList(context.points || []).filter(Boolean);
+      const scenes = uniqueList(context.scenes || []).filter(Boolean);
+      const selectedPoints = getPlanSellingPoints(points, index);
+      const scene = scenes[index % Math.max(scenes.length, 1)] || "";
+      const structure = COPY_STRUCTURES[index % COPY_STRUCTURES.length];
+      const lengthCycle = context.creativity === "stable"
+        ? ["短", "中", "短", "中"]
+        : context.creativity === "wild"
+          ? ["中", "长", "中", "长"]
+          : ["短", "中", "中", "长"];
+      return {
+        id: index + 1,
+        selectedPoints,
+        point: selectedPoints[0] || "",
+        secondPoint: selectedPoints[1] || "",
+        scene,
+        structureKey: structure.key,
+        order: structure.order,
+        openingType: ["购买原因", "使用场景", "实际验证", "顾虑排除", "日常细节"][index % 5],
+        detailAnchor: pickByIndex(getSemanticDetailAnchors(scene, selectedPoints), index),
+        endingType: ["省心", "踏实", "够用", "克制", "继续观察"][index % 5],
+        targetLength: lengthCycle[index % lengthCycle.length],
+        storyLevel: context.creativity === "wild" ? "轻度" : "低",
+        variant: Math.floor(index / COPY_STRUCTURES.length)
+      };
+    }
+
+    function createSemanticGeneratedItem(plan, context) {
+      const content = buildSemanticCopyFromPlan(plan);
+      return {
+        id: createId(),
+        content,
+        point: plan.point,
+        secondPoint: plan.secondPoint || "",
+        scene: plan.scene,
+        lengthType: getLengthType(content),
+        structureKey: plan.structureKey,
+        openerKey: classifyOpening(content.split("。").filter(Boolean)[0] || content),
+        endingKey: normalizeKey(content.split("。").filter(Boolean).pop() || content),
+        selectedSellingPoints: plan.selectedPoints,
+        selectedUseScenes: [plan.scene].filter(Boolean),
+        creativityLevel: context.creativity,
+        useMaterialStyle: Boolean(els.useMaterials.checked),
+        editing: false,
+        draft: "",
+        originalText: content
+      };
+    }
+
+    function buildSemanticCopyFromPlan(plan) {
+      const used = new Set();
+      const pools = {
+        reason: getSceneReasonPool(plan.scene),
+        scene: getSceneUsagePool(plan.scene),
+        point: getSellingPointExpressionPool(plan.point, plan.scene),
+        secondPoint: plan.secondPoint ? getSellingPointExpressionPool(plan.secondPoint, plan.scene) : [],
+        ending: getSemanticEndingPool(plan.scene)
+      };
+      const sentenceMap = {
+        reason: pickSemanticSentence(pools.reason, plan.id + plan.variant * 3, used),
+        scene: pickSemanticSentence(pools.scene, plan.id + plan.variant * 5 + 1, used),
+        point: pickSemanticSentence(pools.point, plan.id + plan.variant * 7 + 2, used),
+        secondPoint: pickSemanticSentence(pools.secondPoint, plan.id + plan.variant * 11 + 3, used),
+        ending: pickSemanticSentence(pools.ending, plan.id + plan.variant * 13 + 4, used)
+      };
+      const maxParts = plan.selectedPoints.length > 1
+        ? (plan.targetLength === "短" ? 3 : plan.targetLength === "中" ? 4 : 5)
+        : (plan.targetLength === "短" ? 2 : plan.targetLength === "中" ? 3 : 4);
+      const ordered = plan.order.map(key => sentenceMap[key]).filter(Boolean);
+      const requiredPointSentences = plan.selectedPoints
+        .map((point, pointIndex) => pointIndex === 0 ? sentenceMap.point : sentenceMap.secondPoint)
+        .filter(Boolean);
+      const merged = uniqueList([...ordered.slice(0, maxParts), ...requiredPointSentences]);
+      return sanitizeCopy(trimToLength(compactText(merged), plan.targetLength));
+    }
+
+    function pickSemanticSentence(pool, cursor, used) {
+      const values = (pool || []).filter(Boolean);
+      for (let offset = 0; offset < values.length; offset += 1) {
+        const sentence = values[(cursor + offset) % values.length];
+        const signatures = getSentenceSignatures(sentence);
+        if (signatures.some(signature => used.has(signature))) continue;
+        signatures.forEach(signature => used.add(signature));
+        return sentence;
+      }
+      return values[cursor % Math.max(values.length, 1)] || "";
+    }
+
+    function getSceneReasonPool(scene) {
+      return getSceneKnowledge(scene).reasons;
+    }
+
+    function getSceneUsagePool(scene) {
+      return getSceneKnowledge(scene).scenes;
+    }
+
+    function getSellingPointExpressionPool(point, scene = "") {
+      const expressions = getPointKnowledge(point).expressions;
+      const filtered = expressions.filter(sentence => !expressionConflictsWithScene(sentence, scene));
+      return filtered.length ? filtered : expressions;
+    }
+
+    function expressionConflictsWithScene(sentence, scene) {
+      const text = String(sentence || "");
+      if (!scene) return false;
+      if (scene === "办公室用") return /通勤|出门|床头|客厅|睡前|晚上|家里|家人|朋友|刷到|种草|评价|回购|又买|再买|新手机/.test(text);
+      if (scene === "家里用") return /办公室|公司|工位|上班|午休|开会|朋友|刷到|种草|评价|回购|又买|再买|新手机/.test(text);
+      if (scene === "刚换手机") return /办公室|公司|工位|上班|午休|床头|客厅|朋友|刷到|种草|评价|回购|又买|再买/.test(text);
+      if (scene === "朋友推荐购买") return /刷到|种草|看评价|网上|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
+      if (scene === "网络种草购买") return /朋友|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
+      if (scene === "回购") return /朋友|刷到|种草|看评价|网上|办公室|工位|床头|刚换|新手机/.test(text);
+      return false;
+    }
+
+    function getSemanticEndingPool(scene) {
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return [
+          `${gift.recipient}用着省心，我也不用再反复操心`,
+          `目前看${gift.pronoun}用着还算顺手`,
+          `这种每天用的小东西，稳定一点就够了`,
+          `整体不是夸张的感觉，胜在日常踏实`,
+          `只要${gift.pronoun}日常用着顺手，这次就算买对了`
+        ];
+      }
+      return COPY_ENDINGS;
+    }
+
+    function getSemanticDetailAnchors(scene, points) {
+      return uniqueList([
+        ...getSceneUsagePool(scene),
+        ...points.flatMap(point => getSellingPointExpressionPool(point, scene))
+      ]);
+    }
+
+    function getPointKnowledge(point) {
+      return SELLING_POINT_KNOWLEDGE[point] || {
+        signals: new RegExp(escapeRegExp(point)),
+        forbiddenWhenUnselected: new RegExp(escapeRegExp(point)),
+        expressions: [
+          `${point}这一点比较符合日常需求`,
+          `主要看中${point}，实际用下来还算顺手`,
+          `${point}不是口号，日常使用里能感受到`,
+          `买之前关注${point}，到手后也特意留意了`,
+          `对我来说，${point}这点比页面描述更重要`,
+          `${point}这类体验，还是要日常用过才知道`
+        ]
+      };
+    }
+
+    function getSceneKnowledge(scene) {
+      if (SCENE_KNOWLEDGE[scene]) return SCENE_KNOWLEDGE[scene];
+      const gift = getGiftSceneInfo(scene);
+      if (gift) {
+        return {
+          signals: new RegExp(`${escapeRegExp(gift.recipient)}|${escapeRegExp(gift.pronoun)}|对方`),
+          forbiddenWhenUnselected: new RegExp(escapeRegExp(scene)),
+          reasons: [
+            `这是买给${gift.recipient}日常用的，选的时候更看重稳定`,
+            `${gift.pronoun}平时手机用得多，我想挑个顺手一点的`,
+            `给${gift.recipient}买这种每天用的小配件，还是想省心一点`,
+            `主要是替${gift.recipient}换个充电头，不想继续凑合`,
+            `不是给自己买，所以会更在意实际使用反馈`,
+            `买之前先想的是${gift.pronoun}每天会不会用得顺手`
+          ],
+          scenes: [
+            `${gift.recipient}拿到后先按平时习惯用了几天`,
+            `${gift.pronoun}平时充手机比较频繁，日常顺手更重要`,
+            `我主要看${gift.pronoun}用下来有没有觉得麻烦`,
+            `${gift.pronoun}平时边用边充的时候比较多`,
+            `这种小配件放在常用位置，最好别让人惦记`,
+            `${gift.pronoun}实际用了几次之后，反馈比参数更有参考`
+          ]
+        };
+      }
+      return {
+        signals: new RegExp(escapeRegExp(scene || "日常")),
+        forbiddenWhenUnselected: new RegExp(escapeRegExp(scene || "")),
+        reasons: [`买来主要是为了${scene || "日常使用"}`, `这个使用场景里，稳定和顺手会更重要`],
+        scenes: [`放在${scene || "常用位置"}里实际试了几天`, `这个场景下更看重日常顺不顺手`]
+      };
     }
 
     function createFunctionGeneratedItem(content, points, scenes, creativity, index) {
@@ -1991,15 +2546,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function matchesSellingPointSignal(text, point) {
-      const rules = {
-        "快充": /快充|补电|速度|充得快|充电快|充电速度|不用一直等|短时间|充一会|午休|出门前|临时充电/,
-        "低温": /低温|温度|发热|发烫|热感|烫|没那么容易热|温度稳|温度表现|热感控制|长时间插着/,
-        "颜值": /颜值|颜色|外观|好看|耐看|质感|桌面|放着不突兀|看着舒服/,
-        "对比杂牌": /杂牌|便宜头|便宜充电头|不放心|靠谱|别太省|太凑合/,
-        "对比旧充电器": /旧充电器|旧头|旧款|以前那个|之前那个|用了很久|换后|比之前|体验差距/,
-        "物流速度快": /物流|快递|发货|到货|送到/
-      };
-      return (rules[point] || new RegExp(escapeRegExp(point))).test(text);
+      return getPointKnowledge(point).signals.test(text);
     }
 
     function escapeRegExp(value) {
@@ -2009,18 +2556,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function hasUnselectedSellingPoint(text, selectedSellingPoints = [], selectedUseScenes = []) {
       const selected = new Set(selectedSellingPoints);
       const hasNewPhoneScene = selectedUseScenes.includes("刚换手机");
-      const rules = [
-        ["快充", /快充|补电快|速度快|速度比|充得快|充电速度|临时补电|补电挺方便|不用一直等着手机充电/],
-        ["低温", /低温|温度|发热|发烫|热感|烫|没那么容易热|温度稳/],
-        ["颜值", /颜值|颜色|外观|好看|耐看|质感|桌面搭配|放在桌面/],
-        ["对比杂牌", /杂牌|便宜头|便宜充电头|不放心|靠谱点的牌子|别太省/],
-        ["对比旧充电器", /旧充电器|旧头|旧款|以前那个|之前那个|用了很久|换完之后|比之前/]
-      ];
-
-      return rules.some(([point, pattern]) => {
+      return Object.entries(SELLING_POINT_KNOWLEDGE).some(([point, knowledge]) => {
         if (selected.has(point)) return false;
         if (point === "对比旧充电器" && hasNewPhoneScene && /旧头|旧充电头|之前那个旧头|不想继续用之前/.test(text)) return false;
-        return pattern.test(text);
+        return knowledge.forbiddenWhenUnselected.test(text);
       });
     }
 
