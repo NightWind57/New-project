@@ -14,7 +14,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     const STYLE_PROFILE_VERSION = 1;
 
     const BASE_POINTS = ["快充", "低温", "颜值", "对比杂牌", "对比旧充电器"];
-    const BASE_SCENES = ["刚换手机", "办公室用", "家里用", "朋友推荐购买", "网络种草购买", "回购"];
+    const BASE_SCENES = [
+      "刚换手机", "办公室用", "家里用", "床头睡前用", "客厅备用", "宿舍用", "出差旅行",
+      "朋友推荐购买", "网络种草购买", "回购", "给老公买的", "给老婆买的", "给对象买的", "给爸妈买的",
+      "旧头坏了", "备用充电器", "午休补电", "早上出门前", "边用边充"
+    ];
     const CUSTOM_OPTION = "自定义";
 
     const POINT_LINES = {
@@ -714,6 +718,20 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         addIfValid(createSemanticGeneratedItem(plan, { creativity: context.creativity }), { relaxedSimilarity: true });
         cursor += 1;
       }
+      let emergencyCursor = 0;
+      while (accepted.length < count && emergencyCursor < count * 80) {
+        const item = createEmergencyFallbackItem(context.points, context.scenes, context.creativity, emergencyCursor + 70000);
+        const selectedPoints = item.selectedSellingPoints?.length ? item.selectedSellingPoints : [item.point, item.secondPoint].filter(Boolean);
+        const selectedScenes = item.selectedUseScenes?.length ? item.selectedUseScenes : [item.scene].filter(Boolean);
+        if (
+          item.content
+          && !accepted.some(existing => existing.content === item.content)
+          && validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)
+        ) {
+          accepted.push(item);
+        }
+        emergencyCursor += 1;
+      }
       return accepted.slice(0, count);
     }
 
@@ -1078,7 +1096,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function generateLocalBatch(points, scenes, creativity, options = {}) {
-      state.generated = generateSemanticCopies(10, { points, scenes, creativity, existingItems: [] });
+      const primary = generateSemanticCopies(10, { points, scenes, creativity, existingItems: [] });
+      state.generated = ensureGeneratedCount(primary, 10, { points, scenes, creativity });
       rememberHistory(state.generated.map(item => item.content));
       renderGenerated();
       showToast(options.message || `已生成 ${state.generated.length} 条文案`);
@@ -1135,6 +1154,27 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           generated.push(item);
         }
         finalCursor += 1;
+      }
+
+      if (generated.length < count) {
+        const safeTopUps = generateSafeFallbackCopies(count - generated.length, {
+          points,
+          scenes,
+          creativity,
+          existingItems: [...existingItems, ...generated]
+        });
+        safeTopUps.forEach(item => {
+          if (!generated.some(existing => existing.content === item.content)) generated.push(item);
+        });
+      }
+
+      let forceCursor = 0;
+      while (generated.length < count && forceCursor < count * 80) {
+        const item = createEmergencyFallbackItem(points, scenes, creativity, forceCursor + 30000);
+        if (item.content && !generated.some(existing => existing.content === item.content)) {
+          generated.push(item);
+        }
+        forceCursor += 1;
       }
 
       return generated.slice(0, count);
@@ -1276,6 +1316,16 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (scene === "朋友推荐购买") return /刷到|种草|看评价|网上|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
       if (scene === "网络种草购买") return /朋友|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
       if (scene === "回购") return /朋友|刷到|种草|看评价|网上|办公室|工位|床头|刚换|新手机/.test(text);
+      const dimensions = inferSceneDimensions(scene);
+      if (dimensions?.place === "office") return /通勤|出门|床头|客厅|睡前|晚上|家里|朋友|刷到|种草|回购|新手机/.test(text);
+      if (["home", "bedside", "livingRoom"].includes(dimensions?.place)) return /办公室|公司|工位|上班|午休|开会|朋友|刷到|种草|回购|新手机/.test(text);
+      if (dimensions?.place === "dorm") return /办公室|公司|工位|床头|客厅|朋友|刷到|种草|回购|新手机/.test(text);
+      if (dimensions?.place === "travel") return /办公室|公司|工位|上班|午休|开会|通勤|床头|客厅|家里|朋友|刷到|种草|回购|新手机/.test(text);
+      if (dimensions?.place === "car") return /办公室|工位|床头|客厅|家里|朋友|刷到|种草|回购|新手机/.test(text);
+      if (dimensions?.recipient) return /通勤|出门|办公室|公司|工位|上班|午休|床头|客厅|家里|朋友|刷到|种草|回购|新手机|刚换/.test(text);
+      if (dimensions?.source === "friend") return /刷到|种草|看评价|网上/.test(text);
+      if (dimensions?.source === "online") return /朋友/.test(text);
+      if (dimensions?.trigger === "repurchase") return /朋友|刷到|种草|看评价|新手机|刚换/.test(text);
       return false;
     }
 
@@ -1315,36 +1365,195 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       };
     }
 
+    function inferSceneDimensions(scene) {
+      const value = String(scene || "").trim();
+      const gift = getGiftSceneInfo(value);
+      const dimensions = {
+        raw: value,
+        recipient: gift?.recipient || "",
+        pronoun: gift?.pronoun || "",
+        place: "",
+        trigger: "",
+        moment: "",
+        source: "",
+        usageMode: ""
+      };
+
+      if (/办公室|公司|工位|上班/.test(value)) dimensions.place = "office";
+      else if (/床头|睡前/.test(value)) dimensions.place = "bedside";
+      else if (/客厅/.test(value)) dimensions.place = "livingRoom";
+      else if (/家里|家用/.test(value)) dimensions.place = "home";
+      else if (/宿舍|寝室/.test(value)) dimensions.place = "dorm";
+      else if (/出差|旅行|旅游|行李/.test(value)) dimensions.place = "travel";
+      else if (/车上|车里|通勤/.test(value)) dimensions.place = "car";
+
+      if (/刚换|新手机|换机/.test(value)) dimensions.trigger = "newPhone";
+      else if (/旧头坏|坏了|坏掉|不能用/.test(value)) dimensions.trigger = "brokenOldCharger";
+      else if (/备用|多备|备一个/.test(value)) dimensions.trigger = "backup";
+      else if (/回购|又买|再买|复购/.test(value)) dimensions.trigger = "repurchase";
+      else if (/朋友|同事|别人推荐/.test(value)) dimensions.source = "friend";
+      else if (/种草|刷到|评价|网上|推荐内容/.test(value)) dimensions.source = "online";
+
+      if (/午休|中午/.test(value)) dimensions.moment = "noon";
+      else if (/早上|出门前/.test(value)) dimensions.moment = "morning";
+      else if (/晚上|睡前/.test(value)) dimensions.moment = "night";
+      else if (/边用边充|边玩边充|回消息/.test(value)) dimensions.moment = "whileUsing";
+
+      if (/边用边充|边玩边充|回消息/.test(value)) dimensions.usageMode = "whileUsing";
+      if (dimensions.recipient || dimensions.place || dimensions.trigger || dimensions.moment || dimensions.source || dimensions.usageMode) {
+        return dimensions;
+      }
+      return null;
+    }
+
+    function buildSemanticSceneKnowledge(scene) {
+      const dimensions = inferSceneDimensions(scene);
+      if (!dimensions) return null;
+      const reasons = [];
+      const scenes = [];
+
+      const recipient = dimensions.recipient;
+      const pronoun = dimensions.pronoun || "对方";
+      if (recipient) {
+        reasons.push(
+          `这是给${recipient}日常用的，选的时候更看重省心`,
+          `${pronoun}平时手机用得多，我想挑个稳定一点的`,
+          `不是给自己买，所以会更在意实际使用反馈`,
+          `给${recipient}选每天要用的小配件，还是想买得稳一点`
+        );
+        scenes.push(
+          `${recipient}拿到后先按平时习惯用了几天`,
+          `${pronoun}日常充手机比较频繁，顺手比参数更重要`,
+          `我主要看${pronoun}用下来有没有觉得麻烦`,
+          `${pronoun}实际用了几次之后，反馈比页面介绍更有参考`
+        );
+      }
+
+      const placeLines = {
+        office: {
+          reasons: ["公司里固定备一个，用起来会比来回带方便", "上班时手机用得多，工位旁边放一个更踏实"],
+          scenes: ["放在工位旁边，低电量时随手能插", "上午消息多的时候，插上补一会儿就能继续用"]
+        },
+        bedside: {
+          reasons: ["床头一直缺一个顺手的充电头，晚上不用再到处找", "睡前充电是每天都会用到的场景，还是想稳定一点"],
+          scenes: ["晚上放在床头，伸手就能插上", "睡前补电时不用来回拔插，用起来更省事"]
+        },
+        livingRoom: {
+          reasons: ["客厅经常有人临时充电，多备一个会方便很多", "家里公共位置放一个，谁要用都能直接拿"],
+          scenes: ["放在客厅常用位置，手机没电时不用回房间找", "家里人偶尔也会用，放外面会更顺手"]
+        },
+        home: {
+          reasons: ["家里充电头不太够用，想多备一个", "固定放家里用，不用每天拿来拿去"],
+          scenes: ["放在家里常用位置，随手就能充", "晚上或休息时用得多，稳定一点更省心"]
+        },
+        dorm: {
+          reasons: ["宿舍里插座位置有限，想备一个小一点顺手的", "平时在宿舍手机用得多，充电头稳定会更重要"],
+          scenes: ["放在桌边或床边，日常充电不用来回找", "宿舍里零碎补电次数多，用着顺手就行"]
+        },
+        travel: {
+          reasons: ["出差旅行时不想带太多充电头，想选一个稳定的", "外出时充电机会不固定，充电头省心会更重要"],
+          scenes: ["放进行李里不占太多位置，临时补电也方便", "酒店或路上用的时候，稳定比花哨更重要"]
+        },
+        car: {
+          reasons: ["通勤路上手机用得多，车里备一个会安心些", "车上临时补电的机会不少，想准备一个顺手的"],
+          scenes: ["放在车里备用，低电量时不用临时找", "通勤时偶尔补一下电，日常会从容些"]
+        }
+      };
+      if (dimensions.place && placeLines[dimensions.place]) {
+        reasons.push(...placeLines[dimensions.place].reasons);
+        scenes.push(...placeLines[dimensions.place].scenes);
+      }
+
+      const triggerLines = {
+        newPhone: {
+          reasons: ["刚换新手机后，充电头也想一起换稳一点", "新手机不想继续混着用旧配件"],
+          scenes: ["新手机刚开始用，充电体验会被放大", "换机之后会更留意充电时的细节"]
+        },
+        brokenOldCharger: {
+          reasons: ["旧充电头已经不太好用，才想着换一个", "原来的头用着不稳定，不想继续凑合"],
+          scenes: ["换掉旧头后，日常充电会少操心一点", "旧头先放一边，新这个更适合常用"]
+        },
+        backup: {
+          reasons: ["主要是想多备一个，省得临时找不到", "常用位置多放一个，日常会方便很多"],
+          scenes: ["需要的时候直接拿来用，不用到处翻", "多一个备用，低电量时会从容一些"]
+        },
+        repurchase: {
+          reasons: ["之前用过一个，表现稳定才会继续买", "不是第一次买，主要是之前用着比较踏实"],
+          scenes: ["前一个还在用，这次算是补一个常用位置", "用过之后再买，心里会更有底"]
+        }
+      };
+      if (dimensions.trigger && triggerLines[dimensions.trigger]) {
+        reasons.push(...triggerLines[dimensions.trigger].reasons);
+        scenes.push(...triggerLines[dimensions.trigger].scenes);
+      }
+
+      const sourceLines = {
+        friend: {
+          reasons: ["朋友实际用过后推荐，我买的时候会更放心一点", "不是单看介绍，主要是身边人用过才愿意试"],
+          scenes: ["朋友说的几个点，我到手后也特意留意了一下", "自己试过几天，才知道推荐有没有参考价值"]
+        },
+        online: {
+          reasons: ["看了几条真实反馈后，才决定买来试试", "被种草后没有马上买，还是先看了使用评价"],
+          scenes: ["到手后按日常习惯用了几天", "评价里提到的细节，我自己也留意了一下"]
+        }
+      };
+      if (dimensions.source && sourceLines[dimensions.source]) {
+        reasons.push(...sourceLines[dimensions.source].reasons);
+        scenes.push(...sourceLines[dimensions.source].scenes);
+      }
+
+      const momentLines = {
+        noon: ["午休前插上一会儿，下午用手机会踏实些", "中午零碎时间补电，日常节奏更合适"],
+        morning: ["早上出门前临时补一下，电量焦虑会少一点", "出门前不用等太久，赶时间时更实用"],
+        night: ["晚上睡前插上，不用反复确认充电状态", "睡前放着充，第二天用起来会更踏实"],
+        whileUsing: ["边回消息边充的时候，体验差异会更明显", "平时边用边充多，稳定一点更影响日常"]
+      };
+      if (dimensions.moment && momentLines[dimensions.moment]) {
+        scenes.push(...momentLines[dimensions.moment]);
+      }
+
+      const fallbackReasons = ["买它主要是为了日常用得更省心", "这类每天会用到的小配件，稳定和顺手更重要"];
+      const fallbackScenes = ["实际按平时习惯用了几天", "没有刻意测试，就是放在常用位置正常用"];
+      return {
+        signals: buildSceneSignal(dimensions),
+        forbiddenWhenUnselected: new RegExp(escapeRegExp(scene || "")),
+        reasons: uniqueList(reasons.length ? reasons : fallbackReasons),
+        scenes: uniqueList(scenes.length ? scenes : fallbackScenes)
+      };
+    }
+
+    function buildSceneSignal(dimensions) {
+      const tokens = [];
+      if (dimensions.recipient) tokens.push(dimensions.recipient, dimensions.pronoun, "对方");
+      if (dimensions.place === "office") tokens.push("办公室", "公司", "工位", "上班");
+      if (dimensions.place === "bedside") tokens.push("床头", "睡前", "晚上");
+      if (dimensions.place === "livingRoom") tokens.push("客厅", "家里");
+      if (dimensions.place === "home") tokens.push("家里", "晚上", "常用位置");
+      if (dimensions.place === "dorm") tokens.push("宿舍", "桌边", "床边");
+      if (dimensions.place === "travel") tokens.push("出差", "旅行", "行李", "酒店");
+      if (dimensions.place === "car") tokens.push("车里", "车上", "通勤");
+      if (dimensions.trigger === "newPhone") tokens.push("刚换", "新手机", "换机");
+      if (dimensions.trigger === "brokenOldCharger") tokens.push("旧头", "旧充电头", "换掉");
+      if (dimensions.trigger === "backup") tokens.push("备用", "多备", "常用位置");
+      if (dimensions.trigger === "repurchase") tokens.push("之前用过", "再买", "回购");
+      if (dimensions.source === "friend") tokens.push("朋友", "推荐");
+      if (dimensions.source === "online") tokens.push("评价", "种草", "刷到");
+      if (dimensions.moment === "noon") tokens.push("午休", "中午");
+      if (dimensions.moment === "morning") tokens.push("早上", "出门前");
+      if (dimensions.moment === "night") tokens.push("晚上", "睡前");
+      if (dimensions.moment === "whileUsing") tokens.push("边用边充", "回消息");
+      return new RegExp(uniqueList(tokens).map(escapeRegExp).join("|") || escapeRegExp(dimensions.raw || "日常"));
+    }
+
     function getSceneKnowledge(scene) {
       if (SCENE_KNOWLEDGE[scene]) return SCENE_KNOWLEDGE[scene];
-      const gift = getGiftSceneInfo(scene);
-      if (gift) {
-        return {
-          signals: new RegExp(`${escapeRegExp(gift.recipient)}|${escapeRegExp(gift.pronoun)}|对方`),
-          forbiddenWhenUnselected: new RegExp(escapeRegExp(scene)),
-          reasons: [
-            `这是买给${gift.recipient}日常用的，选的时候更看重稳定`,
-            `${gift.pronoun}平时手机用得多，我想挑个顺手一点的`,
-            `给${gift.recipient}买这种每天用的小配件，还是想省心一点`,
-            `主要是替${gift.recipient}换个充电头，不想继续凑合`,
-            `不是给自己买，所以会更在意实际使用反馈`,
-            `买之前先想的是${gift.pronoun}每天会不会用得顺手`
-          ],
-          scenes: [
-            `${gift.recipient}拿到后先按平时习惯用了几天`,
-            `${gift.pronoun}平时充手机比较频繁，日常顺手更重要`,
-            `我主要看${gift.pronoun}用下来有没有觉得麻烦`,
-            `${gift.pronoun}平时边用边充的时候比较多`,
-            `这种小配件放在常用位置，最好别让人惦记`,
-            `${gift.pronoun}实际用了几次之后，反馈比参数更有参考`
-          ]
-        };
-      }
+      const semanticScene = buildSemanticSceneKnowledge(scene);
+      if (semanticScene) return semanticScene;
       return {
         signals: new RegExp(escapeRegExp(scene || "日常")),
         forbiddenWhenUnselected: new RegExp(escapeRegExp(scene || "")),
-        reasons: [`买来主要是为了${scene || "日常使用"}`, `这个使用场景里，稳定和顺手会更重要`],
-        scenes: [`放在${scene || "常用位置"}里实际试了几天`, `这个场景下更看重日常顺不顺手`]
+        reasons: ["买它主要是为了日常用得更省心", "这类每天会用到的小配件，稳定和顺手更重要"],
+        scenes: ["实际按平时习惯用了几天", "没有刻意测试，就是放在常用位置正常用"]
       };
     }
 
@@ -1614,6 +1823,14 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function getCustomScenePool(scene) {
+      const semanticScene = buildSemanticSceneKnowledge(scene);
+      if (semanticScene) {
+        return {
+          reasons: semanticScene.reasons,
+          scenes: semanticScene.scenes,
+          problems: semanticScene.reasons
+        };
+      }
       const gift = getGiftSceneInfo(scene);
       if (gift) {
         return {
@@ -1640,8 +1857,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         };
       }
       return {
-        reasons: customSceneLines(scene),
-        scenes: customSceneLines(scene),
+        reasons: ["买它主要是为了日常用得更省心", "这类每天会用到的小配件，稳定和顺手更重要"],
+        scenes: ["实际按平时习惯用了几天", "没有刻意测试，就是放在常用位置正常用"],
         problems: ["之前用着总有点不顺手", "原来的充电器继续凑合也能用，但体验一般"]
       };
     }
@@ -1677,16 +1894,67 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         const point = selectedPlanPoints[0] || "";
         const secondPoint = selectedPlanPoints[1] || "";
         const scene = context.scenes[(generated.length + index) % Math.max(context.scenes.length, 1)] || "";
-        const content = sanitizeCopy(buildGuaranteedCopy(point, scene, generated.length + index, secondPoint), context.editPreference);
-        const item = createFilledGeneratedItem(content, point, scene, context.creativity, secondPoint);
+        const item = createEmergencyFallbackItem(context.points, context.scenes, context.creativity, generated.length + index);
         const selectedPoints = [point, secondPoint].filter(Boolean);
-        const duplicate = generated.some(existing => existing.content === content);
-        if (!duplicate && validateGeneratedCopy(content, selectedPoints, [scene].filter(Boolean), item)) {
+        const duplicate = generated.some(existing => existing.content === item.content);
+        if (!duplicate && validateGeneratedCopy(item.content, selectedPoints, [scene].filter(Boolean), item)) {
           generated.push(item);
           rememberBatchItem(context.stats, item);
         }
         index += 1;
       }
+    }
+
+    function createEmergencyFallbackItem(points, scenes, creativity, cursor) {
+      const selectedPlanPoints = getPlanSellingPoints(points, cursor);
+      const point = selectedPlanPoints[0] || points[cursor % Math.max(points.length, 1)] || "";
+      const secondPoint = selectedPlanPoints[1] || "";
+      const scene = scenes[cursor % Math.max(scenes.length, 1)] || "";
+      const content = sanitizeCopy(buildEmergencyCopy(point, secondPoint, scene, cursor));
+      return createFilledGeneratedItem(content, point, scene, creativity, secondPoint);
+    }
+
+    function buildEmergencyCopy(point, secondPoint, scene, cursor) {
+      const sceneKnowledge = getSceneKnowledge(scene);
+      const reasonPool = sceneKnowledge.reasons?.length ? sceneKnowledge.reasons : getSafeSceneReasonLines(scene);
+      const scenePool = sceneKnowledge.scenes?.length ? sceneKnowledge.scenes : getSafeSceneUseLines(scene);
+      const pointPool = getSellingPointExpressionPool(point, scene);
+      const secondPool = secondPoint ? getSellingPointExpressionPool(secondPoint, scene) : [];
+      const endingPool = getSemanticEndingPool(scene);
+      const blueprints = secondPoint ? [
+        ["reason", "point", "second", "ending"],
+        ["scene", "second", "point"],
+        ["point", "reason", "second"],
+        ["scene", "point", "second", "ending"],
+        ["second", "reason", "point"],
+        ["reason", "scene", "point", "second"],
+        ["point", "second", "scene"],
+        ["scene", "point", "ending", "second"],
+        ["second", "scene", "point"],
+        ["reason", "point", "scene", "second"]
+      ] : [
+        ["reason", "point", "ending"],
+        ["scene", "point"],
+        ["point", "reason"],
+        ["reason", "scene", "point"],
+        ["scene", "point", "ending"],
+        ["point", "scene"]
+      ];
+      const pools = {
+        reason: reasonPool,
+        scene: scenePool,
+        point: pointPool,
+        second: secondPool,
+        ending: endingPool
+      };
+      const order = blueprints[cursor % blueprints.length];
+      const used = new Set();
+      const sentences = order.map((key, offset) => {
+        const sentence = pickSemanticSentence(pools[key], cursor + offset * 17, used);
+        if (sentence) getSentenceSignatures(sentence).forEach(signature => used.add(signature));
+        return sentence;
+      }).filter(Boolean);
+      return compactText(sentences);
     }
 
     function createFilledGeneratedItem(content, point, scene, creativity, secondPoint = "") {
@@ -1844,7 +2112,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "之前那只还在用，日常表现稳定才会回购"
         ]
       };
-      return map[scene] || [`买来主要是为了${scene || "日常使用"}`, `这个使用场景里，稳定和顺手会更重要`];
+      const semanticScene = buildSemanticSceneKnowledge(scene);
+      return map[scene] || semanticScene?.reasons || ["买它主要是为了日常用得更省心", "这类每天会用到的小配件，稳定和顺手更重要"];
     }
 
     function getSafeSceneUseLines(scene) {
@@ -1901,7 +2170,8 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "再买一个主要是图省心，不想重新筛选"
         ]
       };
-      return map[scene] || [`放在${scene || "常用位置"}里实际试了几天`, `这个场景下更看重日常顺不顺手`];
+      const semanticScene = buildSemanticSceneKnowledge(scene);
+      return map[scene] || semanticScene?.scenes || ["实际按平时习惯用了几天", "没有刻意测试，就是放在常用位置正常用"];
     }
 
     function getSafePointLines(point) {
@@ -2582,6 +2852,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (selectedUseScenes.includes("朋友推荐购买") && !/朋友推荐|朋友说|朋友用了|跟着朋友/.test(text)) return false;
       if (selectedUseScenes.includes("网络种草购买") && !/刷到|种草|看评价|网上看到|别人推荐/.test(text)) return false;
       if (selectedUseScenes.includes("回购") && !/回购|又买|再买|第二个|之前买过/.test(text)) return false;
+      const knownScenes = new Set(["刚换手机", "办公室用", "家里用", "朋友推荐购买", "网络种草购买", "回购"]);
+      const semanticScenes = selectedUseScenes.filter(scene => scene && !knownScenes.has(scene));
+      if (semanticScenes.some(scene => !getSceneKnowledge(scene).signals.test(text))) return false;
       return true;
     }
 
@@ -3832,7 +4105,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function loadOptionList(key, defaults, oldCustomKey) {
       const saved = loadArray(key).filter(Boolean);
       const oldCustom = loadArray(oldCustomKey).filter(Boolean);
-      return uniqueList([...(saved.length ? saved : defaults), ...oldCustom]);
+      return uniqueList([...defaults, ...saved, ...oldCustom]);
     }
 
     function uniqueList(list) {
