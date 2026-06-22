@@ -19,6 +19,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "朋友推荐购买", "网络种草购买", "回购", "给老公买的", "给老婆买的", "给对象买的", "给爸妈买的",
       "旧头坏了", "备用充电器", "午休补电", "早上出门前", "边用边充"
     ];
+    const SCENE_ALIASES = {
+      "朋友推荐": "朋友推荐购买",
+      "网络种草": "网络种草购买"
+    };
     const CUSTOM_OPTION = "自定义";
 
     const POINT_LINES = {
@@ -630,7 +634,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
 
     async function generateBatch() {
       const points = getCheckedValues("point").filter(value => value !== CUSTOM_OPTION);
-      const scenes = getCheckedValues("scene").filter(value => value !== CUSTOM_OPTION);
+      const scenes = uniqueList(getCheckedValues("scene").map(normalizeSceneName).filter(value => value !== CUSTOM_OPTION));
       const creativity = els.creativityLevel.value;
       if (!points.length) return showToast("请至少选择一个卖点");
       if (!scenes.length) return showToast("请至少选择一个使用场景");
@@ -726,6 +730,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
         if (
           item.content
           && !accepted.some(existing => existing.content === item.content)
+          && !accepted.some(existing => hasSimilarCoreSignature(item.content, existing.content))
           && validateGeneratedCopy(item.content, selectedPoints, selectedScenes, item)
         ) {
           accepted.push(item);
@@ -1171,7 +1176,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       let forceCursor = 0;
       while (generated.length < count && forceCursor < count * 80) {
         const item = createEmergencyFallbackItem(points, scenes, creativity, forceCursor + 30000);
-        if (item.content && !generated.some(existing => existing.content === item.content)) {
+        if (
+          item.content
+          && !generated.some(existing => existing.content === item.content)
+          && !generated.some(existing => hasSimilarCoreSignature(item.content, existing.content))
+        ) {
           generated.push(item);
         }
         forceCursor += 1;
@@ -1185,6 +1194,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (!validateGeneratedCopy(item.content, item.selectedSellingPoints, item.selectedUseScenes, item)) return false;
       if (existingTexts.includes(item.content)) return false;
       if (hasRepeatedOpening(item.content, existingTexts)) return false;
+      if (existingTexts.some(existing => hasSimilarCoreSignature(item.content, existing))) return false;
       if (!options.relaxedSimilarity && isTooSimilarToAny(item.content, existingTexts)) return false;
       return true;
     }
@@ -1313,7 +1323,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       if (scene === "办公室用") return /通勤|出门|床头|客厅|睡前|晚上|家里|家人|朋友|刷到|种草|评价|回购|又买|再买|新手机/.test(text);
       if (scene === "家里用") return /办公室|公司|工位|上班|午休|开会|朋友|刷到|种草|评价|回购|又买|再买|新手机/.test(text);
       if (scene === "刚换手机") return /办公室|公司|工位|上班|午休|床头|客厅|朋友|刷到|种草|评价|回购|又买|再买/.test(text);
-      if (scene === "朋友推荐购买") return /刷到|种草|看评价|网上|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
+      if (scene === "朋友推荐购买") return /刷到|种草|看评价|网上|回购|又买|再买|办公室|工位|床头|刚换|新手机|出门|通勤|午休|开会|忙起来/.test(text);
       if (scene === "网络种草购买") return /朋友|回购|又买|再买|办公室|工位|床头|刚换|新手机/.test(text);
       if (scene === "回购") return /朋友|刷到|种草|看评价|网上|办公室|工位|床头|刚换|新手机/.test(text);
       const dimensions = inferSceneDimensions(scene);
@@ -1546,6 +1556,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function getSceneKnowledge(scene) {
+      scene = normalizeSceneName(scene);
       if (SCENE_KNOWLEDGE[scene]) return SCENE_KNOWLEDGE[scene];
       const semanticScene = buildSemanticSceneKnowledge(scene);
       if (semanticScene) return semanticScene;
@@ -1558,6 +1569,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function createFunctionGeneratedItem(content, points, scenes, creativity, index) {
+      scenes = scenes.map(normalizeSceneName);
       const selectedPlanPoints = getPlanSellingPoints(points, index);
       const point = selectedPlanPoints[0] || points[index % points.length] || "";
       const secondPoint = selectedPlanPoints[1] || "";
@@ -2834,7 +2846,7 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function hasUnselectedScene(text, selectedUseScenes = []) {
-      const selected = new Set(selectedUseScenes);
+      const selected = new Set(selectedUseScenes.map(normalizeSceneName));
       const sceneRules = [
         ["办公室用", /办公室|公司|工位|上班|午休|放工位/],
         ["家里用", /家里|床头|客厅|睡前|晚上放|家里备用/],
@@ -2846,11 +2858,12 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function hasRequiredSceneSignal(text, selectedUseScenes = []) {
+      selectedUseScenes = selectedUseScenes.map(normalizeSceneName);
       if (selectedUseScenes.includes("刚换手机") && !/刚换|新手机|手机刚换|旧头|旧充电头|配件/.test(text)) return false;
       if (selectedUseScenes.includes("办公室用") && !/办公室|公司|工位|上班|午休|放工位/.test(text)) return false;
       if (selectedUseScenes.includes("家里用") && !/家里|床头|客厅|睡前|晚上|家里备用/.test(text)) return false;
-      if (selectedUseScenes.includes("朋友推荐购买") && !/朋友推荐|朋友说|朋友用了|跟着朋友/.test(text)) return false;
-      if (selectedUseScenes.includes("网络种草购买") && !/刷到|种草|看评价|网上看到|别人推荐/.test(text)) return false;
+      if (selectedUseScenes.includes("朋友推荐购买") && !/朋友推荐|朋友说|朋友用了|跟着朋友|朋友先用过|朋友实际用过|听朋友/.test(text)) return false;
+      if (selectedUseScenes.includes("网络种草购买") && !/刷到|种草|看评价|网上看到|别人推荐|评价里|真实反馈/.test(text)) return false;
       if (selectedUseScenes.includes("回购") && !/回购|又买|再买|第二个|之前买过/.test(text)) return false;
       const knownScenes = new Set(["刚换手机", "办公室用", "家里用", "朋友推荐购买", "网络种草购买", "回购"]);
       const semanticScenes = selectedUseScenes.filter(scene => scene && !knownScenes.has(scene));
@@ -3710,6 +3723,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       return calculateTextSimilarity(a, b) > 0.52;
     }
 
+    function hasSimilarCoreSignature(a, b) {
+      const aClauses = splitComparableClauses(a).filter(clause => clause.length >= 8);
+      const bClauses = splitComparableClauses(b).filter(clause => clause.length >= 8);
+      if (!aClauses.length || !bClauses.length) return false;
+      const overlap = aClauses.filter(clause => bClauses.includes(clause));
+      if (overlap.length >= 2) return true;
+      const aOpening = normalizeOpeningSentence(a);
+      const bOpening = normalizeOpeningSentence(b);
+      if (aOpening && bOpening && aOpening === bOpening) return true;
+      return false;
+    }
+
     function splitComparableClauses(text) {
       return String(text || "")
         .split(/[，。！？、；;]/)
@@ -4103,9 +4128,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function loadOptionList(key, defaults, oldCustomKey) {
-      const saved = loadArray(key).filter(Boolean);
-      const oldCustom = loadArray(oldCustomKey).filter(Boolean);
+      const normalize = key === SCENE_OPTIONS_KEY ? normalizeSceneName : value => value;
+      const saved = loadArray(key).map(normalize).filter(Boolean);
+      const oldCustom = loadArray(oldCustomKey).map(normalize).filter(Boolean);
       return uniqueList([...defaults, ...saved, ...oldCustom]);
+    }
+
+    function normalizeSceneName(value) {
+      const scene = String(value || "").trim();
+      return SCENE_ALIASES[scene] || scene;
     }
 
     function uniqueList(list) {
