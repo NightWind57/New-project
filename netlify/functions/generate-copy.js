@@ -41,6 +41,30 @@ const exaggeratedPhrases = [
   "低不少"
 ];
 
+const hollowCopyPhrases = [
+  "稳定比噱头",
+  "实际体验比参数",
+  "继续用下来如果稳定",
+  "属于稳定省心的小升级",
+  "没有明显想吐槽",
+  "不是追求夸张速度",
+  "日常补电不拖沓",
+  "这种温和一点的体验",
+  "适合长期放在常用位置用",
+  "每天都要用的小配件",
+  "这种实际体验",
+  "对我来说这个体验已经够用",
+  "整体体验比较稳",
+  "胜在每天用着顺手",
+  "日常使用够踏实",
+  "整体更像是",
+  "小东西不需要多花哨",
+  "不是夸张的感觉",
+  "这个表现已经够用",
+  "用着省心",
+  "比较实在"
+];
+
 const adLikePhrases = [
   "官方介绍",
   "产品卖点",
@@ -257,10 +281,14 @@ function buildInstructions() {
     "不要出现任何未选择的卖点或未选择的场景。",
     "不要写成官方介绍，不要写成推广图文案，不要堆参数，不要使用夸张词。",
     "不要堆参数，不要泛泛写充电快、温度低、颜值高、很好用。",
+    "不要写空泛总结句，例如稳定比噱头重要、实际体验比参数重要、不是夸张的感觉、日常用完全够了。",
+    "每条至少写一个可观察的生活动作或使用细节，例如收拾东西时补电、边回消息边充、拿起来摸到热感、给新手机迁资料时使用。",
+    "结尾不要用万能总结，要落到一次具体使用后的感受。",
     "要写清楚为什么买、在哪里用、和之前有什么区别、用完什么感受中的至少两个。",
     "素材库和编辑反馈只能学习语气、节奏、购买理由和细节密度，不能复制原句，也不能只替换几个词。",
     `禁止出现广告词：${bannedPhrases.join("、")}。`,
-    `禁止夸张承诺：${exaggeratedPhrases.join("、")}。`
+    `禁止夸张承诺：${exaggeratedPhrases.join("、")}。`,
+    `禁止空泛套话：${hollowCopyPhrases.join("、")}。`
   ].join("\n");
 }
 
@@ -331,6 +359,8 @@ function buildPrompt(request, retry = {}) {
       "如果 selectedSellingPoints 有 2 个，每条文案必须同时覆盖这 2 个卖点，不能只写其中一个。",
       "如果 selectedSellingPoints 超过 2 个，每条文案最多选择其中 2 个卖点，但必须至少覆盖 2 个已选卖点。",
       "卖点是正文核心，场景只能作为购买背景或使用背景，不能挤掉已选卖点。",
+      "不要把 10 条都写成同一套：购买原因 + 补电效率 + 温度稳定 + 万能总结。",
+      "每条必须有不同的具体动作或细节锚点，不要只换结尾。",
       "用户选择什么卖点，就只能写什么卖点。如果只选择一个卖点，10 条都必须围绕这个卖点，不要为了丰富而引入其他未选择卖点。",
       "用户选择什么场景，就只能写什么场景。每条文案只使用 selectedUseScenes 里的一个主要场景。",
       "如果只选择低温，只能围绕温度稳定、发热感更轻等体验，不要写快充、颜值、套装。",
@@ -685,6 +715,7 @@ function getRejectionReason(item, request, seen, acceptedContents = []) {
   if (!normalized || seen.has(normalized)) return "duplicate_or_empty";
   if (normalized.length < 28) return "too_short";
   if (containsBlockedPhrase(content)) return "blocked_phrase";
+  if (hasHollowCopyPattern(content)) return "hollow_copy";
   if (isAdLike(content)) return "ad_like";
   if (isTooSimilarToMaterials(content, getSimilarityMaterials(request))) return "material_similarity";
   if (isTooSimilarToAny(content, acceptedContents)) return "batch_similarity";
@@ -701,7 +732,30 @@ function getRejectionReason(item, request, seen, acceptedContents = []) {
 }
 
 function containsBlockedPhrase(text) {
-  return [...bannedPhrases, ...exaggeratedPhrases].some(phrase => text.includes(phrase));
+  return [...bannedPhrases, ...exaggeratedPhrases, ...hollowCopyPhrases].some(phrase => text.includes(phrase));
+}
+
+function hasHollowCopyPattern(text) {
+  const genericSignals = [
+    /这个表现已经够用/,
+    /这个体验已经够用/,
+    /稳定比.*重要/,
+    /实际.*比.*重要/,
+    /不是.*夸张/,
+    /没有.*夸张/,
+    /日常.*省心/,
+    /用着.*踏实/,
+    /整体.*稳定/,
+    /目前看下来/,
+    /后面.*继续/,
+    /就算买对了/,
+    /比较实在/
+  ];
+  if (genericSignals.filter(pattern => pattern.test(text)).length >= 2) return true;
+  if (/后先|才绝对|给.+买的的时候|主要就是为了给.+买的/.test(text)) return true;
+  const sentences = String(text || "").split(/[。！？]/).map(item => item.trim()).filter(Boolean);
+  const concreteActionCount = sentences.filter(sentence => /收拾|洗漱|回消息|拍照|迁资料|午休|开会|工位|床头|拿起来|插上|刷消息|出门|通勤|看评价|朋友/.test(sentence)).length;
+  return sentences.length >= 3 && concreteActionCount === 0;
 }
 
 function isAdLike(text) {

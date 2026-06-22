@@ -119,6 +119,15 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       "不会伤电池", "不伤电池", "低很多", "低不少"
     ];
 
+    const hollowCopyPhrases = [
+      "稳定比噱头", "实际体验比参数", "继续用下来如果稳定", "属于稳定省心的小升级",
+      "没有明显想吐槽", "不是追求夸张速度", "日常补电不拖沓", "这种温和一点的体验",
+      "适合长期放在常用位置用", "每天都要用的小配件", "这种实际体验",
+      "对我来说这个体验已经够用", "整体体验比较稳", "胜在每天用着顺手",
+      "日常使用够踏实", "整体更像是", "小东西不需要多花哨", "不是夸张的感觉",
+      "这个表现已经够用", "用着省心", "比较实在", "日常用完全够了"
+    ];
+
     const STRUCTURE_LABELS = {
       A: "购买原因->使用体验->总体感受",
       B: "使用场景->问题->产品解决",
@@ -151,16 +160,16 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     ];
 
     const COPY_ENDINGS = [
-      "目前用下来，属于稳定省心的小升级",
-      "日常使用够踏实，没有明显想吐槽的点",
-      "不是夸张的感觉，胜在每天用着顺手",
-      "对我来说，这种实际体验比参数更重要",
-      "继续用下来如果稳定，就算买对了",
-      "整体更像是把日常充电这件事变省心了",
-      "这种每天都要用的小配件，稳定比噱头重要",
-      "没有宣传里那么夸张，但实际用着比较稳",
-      "目前看下来，适合长期放在常用位置用",
-      "小东西不需要多花哨，顺手就够了"
+      "这几天按正常频率用下来，没有再因为充电这件事烦过",
+      "放在手边充了几次后，比继续凑合旧头舒服些",
+      "充完拿手机时，等待时间和手感都比之前省心",
+      "没有刻意测参数，就是日常充几次能感觉到差别",
+      "对我来说，能少等一会儿、少担心发热就够了",
+      "晚上刷消息时顺手插上，拿起来不会觉得心里没底",
+      "平时手机快没电时用它补一下，节奏不会被打断",
+      "用过几次之后，最明显的是不用总盯着电量看",
+      "放在常用位置随手充，确实比临时到处找头方便",
+      "如果只是想日常少点麻烦，这个表现已经够用"
     ];
 
     const SELLING_POINT_KNOWLEDGE = {
@@ -176,10 +185,10 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "不用专门空出很久等手机充电",
           "午休或者开会前补一下，下午用着会踏实些",
           "手机快没电时插上，电量回得比较及时",
-          "不是追求夸张速度，主要是日常补电不拖沓",
+          "临时要用手机时，不用一直守在插座边等",
           "通勤前临时充一会儿，也能缓一下电量焦虑",
-          "日常用下来，补电速度更适合碎片时间",
-          "不用等到满电才敢出门，这点比较实用"
+          "洗漱或收拾东西的间隙插着，电量能往上顶一截",
+          "手机低电量时补一下，能少一点电量焦虑"
         ]
       },
       "低温": {
@@ -195,9 +204,9 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
           "摸上去是正常使用的温度，不会让人紧张",
           "平时边看消息边充，热感控制得还算克制",
           "充电过程中温度起伏不大，用起来会放心些",
-          "比起发热明显的头，这种温和一点的体验更适合日常",
+          "充了一会儿再拿起来，热感没有让我想拔掉",
           "手机放旁边充着，不会总想拿起来看温度",
-          "日常频繁充电时，温度稳定会更影响体验"
+          "边看消息边充时，手上感觉没那么烫"
         ]
       },
       "颜值": {
@@ -1312,9 +1321,146 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     }
 
     function getSellingPointExpressionPool(point, scene = "") {
-      const expressions = getPointKnowledge(point).expressions;
+      const expressions = uniqueList([
+        ...getContextualPointExpressions(point, scene),
+        ...getPointKnowledge(point).expressions
+      ]);
       const filtered = expressions.filter(sentence => !expressionConflictsWithScene(sentence, scene));
       return filtered.length ? filtered : expressions;
+    }
+
+    function getContextualPointExpressions(point, scene = "") {
+      const normalizedScene = normalizeSceneName(scene);
+      const sceneKey = classifySceneFamily(normalizedScene);
+      const pools = {
+        "刚换手机": {
+          "快充": [
+            "刚换机这几天还在折腾设置，电量低了插一会儿能缓过来",
+            "新手机拍照和传资料用得多，补电速度跟得上会省事些",
+            "刚开始用新机时最怕电量掉太快，临时补一下能顶一阵"
+          ],
+          "低温": [
+            "刚换机还在迁资料，边充边用时热感没那么明显",
+            "新手机拿在手里充一会儿，温度没有让我一直惦记",
+            "刚开始用新机不太想拿旧头凑合，温度稳一点会更放心"
+          ],
+          "颜值": [
+            "新手机到手后，充电头放在一起也想看着清爽些",
+            "配新手机用时，外观看着干净会顺眼不少"
+          ]
+        },
+        "朋友推荐购买": {
+          "快充": [
+            "朋友说临时补电不用等太久，我自己试了几次也差不多",
+            "朋友提醒我看补电速度，到手后确实比想象中省时间",
+            "本来是听朋友说方便，实际用起来确实不用守着等"
+          ],
+          "低温": [
+            "朋友之前提到温度比较稳，我用了几次也有这个感觉",
+            "朋友让我留意发热，我边回消息边充时感觉还算克制",
+            "听朋友说温度不会太夸张，自己用下来也没老想着拔掉"
+          ],
+          "颜值": [
+            "朋友说实物不花哨，到手后看着确实比较耐看",
+            "听朋友推荐时没太在意外观，拿到后发现放桌上还挺清爽"
+          ]
+        },
+        "网络种草购买": {
+          "快充": [
+            "评价里说补电快，我到手后用零碎时间试了几次",
+            "被种草后最想验证的就是补电速度，日常用确实不用等太久",
+            "看反馈说适合临时补电，我自己试下来也符合预期"
+          ],
+          "低温": [
+            "评价里提到温度稳，我自己充了几次也特意摸过",
+            "看别人反馈发热不明显，到手后边用边充也留意了一下",
+            "被种草时最担心夸大，实际充一会儿后热感还算克制"
+          ],
+          "颜值": [
+            "刷到图的时候觉得外观干净，到手后实物也没有翻车",
+            "看评价图觉得不花哨，放在桌边确实不突兀"
+          ]
+        },
+        "回购": {
+          "快充": [
+            "之前那个补电速度我用着能接受，这次再买主要是备用",
+            "前一个临时充电挺顺手，所以才又补了一个",
+            "回购就是因为平时急着用手机时，它能帮上忙"
+          ],
+          "低温": [
+            "之前那个用下来温度比较稳，所以这次才又买一个",
+            "前一个边用边充没让我太担心，这次回购还是看中这一点",
+            "用过一个后再买，主要还是觉得温度表现比较踏实"
+          ],
+          "颜值": [
+            "之前那个放着不显乱，所以这次还是选了同类风格",
+            "回购时也没纠结外观，主要是之前看着挺耐看"
+          ]
+        },
+        recipient: {
+          "快充": [
+            "对方平时手机用得多，临时补电能跟上会省事些",
+            "不是给自己买的，所以更在意对方急用时不用等太久",
+            "对方经常边忙边看手机，补电速度够用就少点麻烦"
+          ],
+          "低温": [
+            "对方平时边用边充多，热感克制一点会更放心",
+            "给对方用的东西，我会更在意充一会儿后会不会烫手",
+            "对方拿着手机时间长，温度稳一点比说得多好听更实际"
+          ],
+          "颜值": [
+            "给对方买的，外观看着干净一点也比较拿得出手",
+            "对方平时东西放得整齐，这种简洁外观更合适"
+          ]
+        },
+        office: {
+          "快充": [
+            "放工位上中午插一会儿，下午开会前电量能补上来",
+            "上班时手机快没电，工位上补一下不用等太久",
+            "午休前插上，回来继续用基本不耽误"
+          ],
+          "低温": [
+            "放工位上充着时，手机拿起来不会有明显热感",
+            "上班边回消息边充，温度没有让我想把线拔掉",
+            "工位上固定用，温度稳一点会更安心"
+          ],
+          "颜值": [
+            "放工位上不显乱，和桌面其他东西放一起挺自然",
+            "办公室桌面本来东西多，外观简单一点反而顺眼"
+          ]
+        },
+        default: {
+          "快充": [
+            "临时要用手机时，不用一直守在插座边等",
+            "洗漱或收拾东西的间隙插着，电量能往上顶一截",
+            "手机低电量时补一下，能少一点电量焦虑"
+          ],
+          "低温": [
+            "边看消息边充时，手上感觉没那么烫",
+            "充了一会儿再拿起来，热感没有让我想拔掉",
+            "手机放旁边充着，不会总想拿起来看温度"
+          ],
+          "颜值": [
+            "放在桌边不会显乱，颜色看着比较干净",
+            "外观不是很抢眼，但每天看着挺舒服",
+            "小小一个放在手边，不会占太多位置"
+          ]
+        }
+      };
+      const byExactScene = pools[normalizedScene]?.[point] || [];
+      const byFamily = pools[sceneKey]?.[point] || [];
+      const byDefault = pools.default[point] || [];
+      return uniqueList([...byExactScene, ...byFamily, ...byDefault]);
+    }
+
+    function classifySceneFamily(scene = "") {
+      const dimensions = inferSceneDimensions(scene);
+      if (dimensions?.recipient) return "recipient";
+      if (dimensions?.place === "office") return "office";
+      if (dimensions?.source === "friend") return "朋友推荐购买";
+      if (dimensions?.source === "online") return "网络种草购买";
+      if (dimensions?.trigger === "repurchase") return "回购";
+      return "";
     }
 
     function expressionConflictsWithScene(sentence, scene) {
@@ -1343,11 +1489,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const gift = getGiftSceneInfo(scene);
       if (gift) {
         return [
-          `${gift.recipient}用着省心，我也不用再反复操心`,
-          `目前看${gift.pronoun}用着还算顺手`,
-          `这种每天用的小东西，稳定一点就够了`,
-          `整体不是夸张的感觉，胜在日常踏实`,
-          `只要${gift.pronoun}日常用着顺手，这次就算买对了`
+          `${gift.recipient}用了几天没再说充电头难用，我也省得再换`,
+          `目前看${gift.pronoun}每天都在用，没有被闲置`,
+          `${gift.pronoun}晚上刷手机时顺手插上，拿起来不会一直嫌热`,
+          `给${gift.recipient}买这种小配件，能少被吐槽就算实用`,
+          `${gift.recipient}出门前临时充一会儿，电量能补上来一些`
         ];
       }
       return COPY_ENDINGS;
@@ -2791,9 +2937,11 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
     function validateGeneratedCopy(text, selectedSellingPoints = [], selectedUseScenes = [], context = {}) {
       if (!text || text.length < 20) return false;
       if ([...bannedMarketingPhrases, ...exaggeratedPhrases, ...(context.editPreference?.avoidPhrases || [])].some(phrase => text.includes(phrase))) return false;
+      if (hollowCopyPhrases.some(phrase => text.includes(phrase))) return false;
       const sentences = text.split("。").map(item => item.trim()).filter(Boolean);
       if (new Set(sentences).size !== sentences.length) return false;
       if (hasObviousStitching(text)) return false;
+      if (hasHollowCopyPattern(text)) return false;
       if (hasUnselectedSellingPoint(text, selectedSellingPoints, selectedUseScenes)) return false;
       if (!coversRequiredSellingPoints(text, selectedSellingPoints)) return false;
       if (hasUnselectedScene(text, selectedUseScenes)) return false;
@@ -2816,6 +2964,18 @@ const OLD_LIBRARY_KEY = "chargerBuyerShowCopyLibrary.v1";
       const hasExperience = /用|充|温度|发热|舒服|安心|省心|踏实|方便|顺手/.test(text);
       const elementCount = [hasReason, hasScene, hasExperience].filter(Boolean).length;
       return elementCount >= 2;
+    }
+
+    function hasHollowCopyPattern(text) {
+      const genericSignals = [
+        /这个表现已经够用/, /这个体验已经够用/, /稳定比.*重要/, /实际.*比.*重要/,
+        /不是.*夸张/, /没有.*夸张/, /日常.*省心/, /用着.*踏实/,
+        /整体.*稳定/, /目前看下来/, /后面.*继续/, /就算买对了/,
+        /比较实在/
+      ];
+      if (genericSignals.filter(pattern => pattern.test(text)).length >= 2) return true;
+      if (/后先|才绝对|给.+买的的时候|主要就是为了给.+买的/.test(text)) return true;
+      return false;
     }
 
     function coversRequiredSellingPoints(text, selectedSellingPoints = []) {
